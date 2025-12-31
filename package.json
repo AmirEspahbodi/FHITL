@@ -12,10 +12,8 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "// API Integration Dependencies": "",
     "@tanstack/react-query": "^5.17.19",
     "axios": "^1.6.5",
-    "// UI Enhancement Dependencies (Optional)": "",
     "react-hot-toast": "^2.4.1"
   },
   "devDependencies": {
