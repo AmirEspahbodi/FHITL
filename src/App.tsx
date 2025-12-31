@@ -155,17 +155,17 @@ const App: React.FC = () => {
       prev.map((row) => {
         if (row.id === rowId) {
           // Only mark as revised if opinion actually changed and new opinion is not empty
-          const shouldMarkRevised =
-            newOpinion !== row.expert_opinion && newOpinion.trim() !== "";
+          // const shouldMarkRevised =
+          //   newOpinion !== row.expert_opinion && newOpinion.trim() !== "";
 
           return {
             ...row,
             expert_opinion: newOpinion,
-            isRevised: shouldMarkRevised ? true : row.isRevised,
-            reviserName: shouldMarkRevised ? currentUserName : row.reviserName,
-            revisionTimestamp: shouldMarkRevised
-              ? new Date().toISOString()
-              : row.revisionTimestamp,
+            // isRevised: shouldMarkRevised ? true : row.isRevised,
+            // reviserName: shouldMarkRevised ? currentUserName : row.reviserName,
+            // revisionTimestamp: shouldMarkRevised
+            //   ? new Date().toISOString()
+            //   : row.revisionTimestamp,
           };
         }
         return row;
