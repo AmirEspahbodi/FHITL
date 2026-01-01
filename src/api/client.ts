@@ -6,7 +6,7 @@ import { ApiErrorResponse } from "./types";
 // ============================================================================
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:3333/api/v1";
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -185,6 +185,14 @@ apiClient.interceptors.response.use(
         data?.error?.message || data?.detail || error.message;
 
       switch (status) {
+        case 400:
+          // BAD REQUEST - Handle login validation errors specifically
+          enhancedError.errorType = ApiErrorType.VALIDATION_ERROR;
+          enhancedError.isRetryable = false;
+          enhancedError.userMessage =
+            data?.detail || "Invalid request. Please check your inputs.";
+          console.warn("[API Bad Request]", data?.detail);
+          break;
         case 401:
           // UNAUTHORIZED
           enhancedError.errorType = ApiErrorType.AUTH_ERROR;

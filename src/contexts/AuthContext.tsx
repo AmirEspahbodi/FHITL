@@ -231,7 +231,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = useCallback(
     async (username: string, password: string, rememberMe: boolean) => {
       // Set loading state
-      setAuthState((prev) => ({ ...prev, isLoading: true }));
+      // setAuthState((prev) => ({ ...prev, isLoading: true }));
 
       try {
         // Import authService dynamically

@@ -51,10 +51,9 @@ export const authService = {
     // PREPARE REQUEST
     // ========================================================================
 
-    const payload: LoginRequest = {
-      username: sanitizedUsername,
-      password,
-    };
+    const formData = new URLSearchParams();
+    formData.append("username", sanitizedUsername);
+    formData.append("password", password);
 
     if (import.meta.env.DEV) {
       console.log("[Auth Service] Attempting login for:", sanitizedUsername);
@@ -67,7 +66,13 @@ export const authService = {
 
       const { data } = await apiClient.post<LoginResponse>(
         "/login/access-token",
-        payload,
+        formData, // Send form data
+        {
+          headers: {
+            // Override the default application/json
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+        },
       );
 
       // ======================================================================
@@ -121,7 +126,10 @@ export const authService = {
 
       // If error already has userMessage (from interceptor), just re-throw
       if (error.userMessage) {
-        throw error;
+        const uiError = new Error(error.userMessage) as any;
+        uiError.originalError = error;
+        uiError.isRetryable = error.isRetryable;
+        throw uiError;
       }
 
       // Log error for debugging (dev mode only)
@@ -143,6 +151,11 @@ export const authService = {
         const responseData = error.response.data;
 
         switch (status) {
+          case 400:
+            // Explicitly handle 400 if client.ts didn't catch it
+            userMessage =
+              responseData?.detail || "Invalid username or password.";
+            break;
           case 401:
             userMessage = "Invalid username or password. Please try again.";
             break;
