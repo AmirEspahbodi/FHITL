@@ -5,105 +5,83 @@ import { ApiErrorResponse } from "./types";
 // Configuration
 // ============================================================================
 
-/**
- * Base URL for API requests
- * Configurable via environment variable for different environments
- * Falls back to localhost for local development
- */
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
 
-/**
- * Axios instance with pre-configured defaults
- * All API calls should use this instance instead of raw axios
- */
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
   timeout: 10000, // 10 second timeout
-  withCredentials: false, // Set to true if using cookies for auth
+  withCredentials: false,
 });
 
 // ============================================================================
 // Authentication Token Management
 // ============================================================================
 
-/**
- * Global reference to auth token and logout function
- * Set by AuthContext, used by interceptors
- *
- * Security Note: This is intentionally kept in module scope (not exported)
- * to prevent external access. Only accessible via setter functions.
- */
 let currentAuthToken: string | null = null;
 let authLogoutCallback: (() => void) | null = null;
 
-/**
- * Set the current authentication token for API requests
- * Called by AuthContext when user logs in or session is restored
- *
- * @param token - JWT token to use for authentication, or null to clear
- *
- * Security: Token stored in memory only (module scope), never logged
- */
 export const setAuthToken = (token: string | null): void => {
   currentAuthToken = token;
-
   if (import.meta.env.DEV) {
-    // Only log token existence, never the actual token value
     console.log("[API Client] Auth token", token ? "set" : "cleared");
   }
 };
 
-/**
- * Register logout callback for automatic logout on 401 responses
- * Called by AuthContext on mount to provide logout function to interceptor
- *
- * @param callback - Function to call when authentication fails
- */
 export const setAuthLogoutCallback = (callback: () => void): void => {
   authLogoutCallback = callback;
 };
 
-/**
- * Get current authentication token (for debugging only)
- * DO NOT use this in production code - use interceptor instead
- *
- * @returns Current token or null
- */
 export const getAuthToken = (): string | null => {
   return currentAuthToken;
 };
 
 // ============================================================================
-// Request Interceptor (Injects Auth Token)
+// Enhanced Error Types
 // ============================================================================
 
 /**
- * Intercepts outgoing requests to add authentication headers
- *
- * Security Features:
- *   - Injects Bearer token automatically
- *   - Never logs actual token value
- *   - Skips auth for login endpoint
- *   - Token sent via Authorization header (never in URL)
+ * Categorized error types for better error handling
  */
+export enum ApiErrorType {
+  NETWORK_ERROR = "NETWORK_ERROR",
+  TIMEOUT_ERROR = "TIMEOUT_ERROR",
+  AUTH_ERROR = "AUTH_ERROR",
+  VALIDATION_ERROR = "VALIDATION_ERROR",
+  SERVER_ERROR = "SERVER_ERROR",
+  NOT_FOUND = "NOT_FOUND",
+  FORBIDDEN = "FORBIDDEN",
+  RATE_LIMIT = "RATE_LIMIT",
+  UNKNOWN = "UNKNOWN",
+}
+
+/**
+ * Enhanced error object with user-friendly messaging
+ */
+export interface EnhancedApiError extends AxiosError<ApiErrorResponse> {
+  userMessage: string;
+  errorType: ApiErrorType;
+  isRetryable: boolean;
+}
+
+// ============================================================================
+// Request Interceptor
+// ============================================================================
+
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Log request in development (without sensitive data)
     if (import.meta.env.DEV) {
       console.log(
         `[API Request] ${config.method?.toUpperCase()} ${config.url}`,
       );
     }
 
-    // Skip auth for login endpoint (prevents circular dependency)
     const isLoginRequest = config.url?.includes("/login");
 
     if (!isLoginRequest && currentAuthToken) {
-      // Inject Bearer token into Authorization header
       if (config.headers) {
         config.headers.Authorization = `Bearer ${currentAuthToken}`;
       }
@@ -118,21 +96,11 @@ apiClient.interceptors.request.use(
 );
 
 // ============================================================================
-// Response Interceptor (Handles Auth Errors)
+// Enhanced Response Interceptor
 // ============================================================================
 
-/**
- * Intercepts API responses for global error handling and authentication management
- *
- * Security Features:
- *   - Auto-logout on 401 (unauthorized)
- *   - Sanitizes error messages (prevents info leakage)
- *   - Never logs token values
- *   - Handles token expiration gracefully
- */
 apiClient.interceptors.response.use(
   (response) => {
-    // Log successful responses in development
     if (import.meta.env.DEV) {
       console.log(
         `[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}`,
@@ -142,120 +110,203 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error: AxiosError<ApiErrorResponse>) => {
-    // Extract meaningful error message
-    let errorMessage = "An unexpected error occurred";
+    const enhancedError = error as EnhancedApiError;
 
-    if (error.response) {
-      // Server responded with error status
+    // Default values
+    enhancedError.errorType = ApiErrorType.UNKNOWN;
+    enhancedError.isRetryable = false;
+    enhancedError.userMessage =
+      "An unexpected error occurred. Please try again.";
+
+    // ========================================================================
+    // NETWORK & CONNECTION ERRORS (No response received)
+    // ========================================================================
+    if (!error.response && error.request) {
+      // Request was made but no response received
+      if (error.code === "ECONNABORTED" || error.message.includes("timeout")) {
+        // TIMEOUT ERROR
+        enhancedError.errorType = ApiErrorType.TIMEOUT_ERROR;
+        enhancedError.isRetryable = true;
+        enhancedError.userMessage =
+          "Connection timeout. The server took too long to respond. Please try again.";
+        console.error("[API Timeout Error] Request exceeded timeout limit");
+      } else if (
+        error.code === "ERR_NETWORK" ||
+        error.code === "ERR_CONNECTION_REFUSED" ||
+        error.message.includes("Network Error")
+      ) {
+        // NETWORK/CONNECTION ERROR
+        enhancedError.errorType = ApiErrorType.NETWORK_ERROR;
+        enhancedError.isRetryable = true;
+        enhancedError.userMessage =
+          "Unable to connect to the server. Please check your internet connection and try again.";
+        console.error(
+          "[API Network Error] Connection refused or network unavailable",
+        );
+      } else if (error.code === "ERR_NAME_NOT_RESOLVED") {
+        // DNS RESOLUTION ERROR
+        enhancedError.errorType = ApiErrorType.NETWORK_ERROR;
+        enhancedError.isRetryable = false;
+        enhancedError.userMessage =
+          "Could not reach the server. The server address may be incorrect.";
+        console.error("[API DNS Error] Could not resolve server address");
+      } else {
+        // OTHER REQUEST ERROR
+        enhancedError.errorType = ApiErrorType.NETWORK_ERROR;
+        enhancedError.isRetryable = true;
+        enhancedError.userMessage =
+          "Network error occurred. Please check your connection and try again.";
+        console.error(
+          "[API Request Error] Request made but no response:",
+          error.message,
+        );
+      }
+    }
+    // ========================================================================
+    // HTTP ERROR RESPONSES (Response received with error status)
+    // ========================================================================
+    else if (error.response) {
       const status = error.response.status;
       const data = error.response.data;
 
-      errorMessage = data?.error?.message || error.message;
-
-      // Handle specific error statuses
-      if (status === 401) {
-        // Unauthorized - token invalid or expired
-        console.error("[API Auth Error] Unauthorized access - logging out");
-
-        // Trigger logout if callback is registered
-        if (authLogoutCallback) {
-          // Use setTimeout to avoid potential race conditions
-          setTimeout(() => {
-            authLogoutCallback?.();
-          }, 0);
-        } else {
-          console.warn("[API Auth Error] No logout callback registered");
-        }
-
-        errorMessage = "Your session has expired. Please log in again.";
-      } else if (status === 403) {
-        console.error("[API Permission Error] Forbidden resource");
-        errorMessage = "You don't have permission to access this resource.";
-      } else if (status === 404) {
-        console.error("[API Not Found]", error.config?.url);
-        errorMessage = "The requested resource was not found.";
-      } else if (status >= 500) {
-        console.error("[API Server Error]", errorMessage);
-        errorMessage = "Server error. Please try again later.";
+      // Check if response is HTML instead of JSON (proxy/CDN errors)
+      const contentType = error.response.headers["content-type"];
+      if (contentType && contentType.includes("text/html")) {
+        enhancedError.errorType = ApiErrorType.SERVER_ERROR;
+        enhancedError.isRetryable = false;
+        enhancedError.userMessage =
+          "Server error. Please try again later or contact support.";
+        console.error("[API Response Error] Received HTML instead of JSON");
+        return Promise.reject(enhancedError);
       }
-    } else if (error.request) {
-      // Request made but no response received (network error)
-      console.error("[API Network Error] No response from server");
-      errorMessage = "Network error. Please check your connection.";
-    } else {
-      // Something else went wrong
+
+      // Extract error message from response
+      const serverMessage =
+        data?.error?.message || data?.detail || error.message;
+
+      switch (status) {
+        case 401:
+          // UNAUTHORIZED
+          enhancedError.errorType = ApiErrorType.AUTH_ERROR;
+          enhancedError.isRetryable = false;
+          enhancedError.userMessage =
+            "Invalid username or password. Please try again.";
+          console.error("[API Auth Error] Unauthorized access");
+
+          // Trigger auto-logout if not on login page
+          const isLoginRequest = error.config?.url?.includes("/login");
+          if (!isLoginRequest && authLogoutCallback) {
+            setTimeout(() => {
+              authLogoutCallback?.();
+            }, 0);
+            enhancedError.userMessage =
+              "Your session has expired. Please log in again.";
+          }
+          break;
+
+        case 403:
+          // FORBIDDEN
+          enhancedError.errorType = ApiErrorType.FORBIDDEN;
+          enhancedError.isRetryable = false;
+          enhancedError.userMessage =
+            "Access denied. Please contact your administrator if you believe this is an error.";
+          console.error("[API Permission Error] Forbidden resource");
+          break;
+
+        case 404:
+          // NOT FOUND
+          enhancedError.errorType = ApiErrorType.NOT_FOUND;
+          enhancedError.isRetryable = false;
+          enhancedError.userMessage =
+            "The requested resource was not found. Please try again or contact support.";
+          console.error("[API Not Found]", error.config?.url);
+          break;
+
+        case 422:
+          // VALIDATION ERROR
+          enhancedError.errorType = ApiErrorType.VALIDATION_ERROR;
+          enhancedError.isRetryable = false;
+          // Try to extract detailed validation errors
+          if (Array.isArray(data?.detail)) {
+            const validationErrors = data.detail
+              .map((err: any) => err.msg || "")
+              .filter(Boolean)
+              .join(", ");
+            enhancedError.userMessage =
+              validationErrors || "Invalid input. Please check your data.";
+          } else {
+            enhancedError.userMessage =
+              serverMessage || "Invalid input. Please check your data.";
+          }
+          console.error("[API Validation Error]", data?.detail);
+          break;
+
+        case 429:
+          // RATE LIMIT
+          enhancedError.errorType = ApiErrorType.RATE_LIMIT;
+          enhancedError.isRetryable = true;
+          const retryAfter = error.response.headers["retry-after"];
+          const waitTime = retryAfter
+            ? `${retryAfter} seconds`
+            : "a few minutes";
+          enhancedError.userMessage = `Too many requests. Please wait ${waitTime} and try again.`;
+          console.error("[API Rate Limit] Too many requests");
+          break;
+
+        case 503:
+          // SERVICE UNAVAILABLE
+          enhancedError.errorType = ApiErrorType.SERVER_ERROR;
+          enhancedError.isRetryable = true;
+          enhancedError.userMessage =
+            "Service temporarily unavailable. Please try again in a few minutes.";
+          console.error(
+            "[API Service Unavailable] Server is down or overloaded",
+          );
+          break;
+
+        case 500:
+        case 502:
+        case 504:
+          // SERVER ERRORS
+          enhancedError.errorType = ApiErrorType.SERVER_ERROR;
+          enhancedError.isRetryable = true;
+          enhancedError.userMessage =
+            "Server error. Please try again later. If the problem persists, contact support.";
+          console.error("[API Server Error]", status, serverMessage);
+          break;
+
+        default:
+          // OTHER HTTP ERRORS
+          enhancedError.errorType = ApiErrorType.UNKNOWN;
+          enhancedError.isRetryable = false;
+          enhancedError.userMessage =
+            serverMessage ||
+            `Request failed with status ${status}. Please try again.`;
+          console.error("[API HTTP Error]", status, serverMessage);
+      }
+    }
+    // ========================================================================
+    // REQUEST SETUP ERRORS (Error before request was sent)
+    // ========================================================================
+    else {
+      enhancedError.errorType = ApiErrorType.UNKNOWN;
+      enhancedError.isRetryable = false;
+      enhancedError.userMessage = "Request failed. Please try again.";
       console.error("[API Setup Error]", error.message);
-      errorMessage = error.message;
     }
 
-    // Attach formatted error message for UI consumption
-    const enhancedError = error as AxiosError<ApiErrorResponse> & {
-      userMessage: string;
-    };
-    enhancedError.userMessage = errorMessage;
+    // Log enhanced error details in development
+    if (import.meta.env.DEV) {
+      console.error("[API Enhanced Error]", {
+        type: enhancedError.errorType,
+        message: enhancedError.userMessage,
+        isRetryable: enhancedError.isRetryable,
+        originalError: error,
+      });
+    }
 
     return Promise.reject(enhancedError);
   },
 );
 
-// ============================================================================
-// Exports
-// ============================================================================
-
 export default apiClient;
-
-/**
- * ============================================================================
- * SECURITY IMPLEMENTATION NOTES
- * ============================================================================
- *
- * TOKEN STORAGE:
- * --------------
- * - Token stored in module scope (memory only)
- * - Not accessible from outside this module
- * - Cleared on logout or browser refresh (if not persisted)
- * - Never logged to console (only "token set/cleared")
- *
- * TOKEN TRANSMISSION:
- * -------------------
- * - Sent via Authorization: Bearer {token} header
- * - Never sent in URL parameters
- * - Never sent in request body
- * - Automatically injected by request interceptor
- * - Skipped for login endpoint (prevents circular dependency)
- *
- * AUTO-LOGOUT:
- * ------------
- * - 401 responses trigger automatic logout
- * - Logout callback provided by AuthContext
- * - Uses setTimeout to avoid race conditions
- * - Clears all auth state (handled by AuthContext)
- * - Redirects to login (handled by ProtectedRoute)
- *
- * ERROR HANDLING:
- * ---------------
- * - 401: Auto-logout, generic message
- * - 403: Permission denied message
- * - 404: Resource not found
- * - 500+: Generic server error
- * - Network errors: Connection message
- * - Enhanced error object with userMessage for UI
- *
- * LOGGING:
- * --------
- * - Request/response logging in development only
- * - Never log actual token values
- * - Log "token set" or "token cleared" only
- * - Error messages sanitized for production
- * - Detailed errors only in dev console
- *
- * FUTURE ENHANCEMENTS:
- * --------------------
- * - Token refresh mechanism (before expiration)
- * - Request retry with exponential backoff
- * - Request deduplication
- * - Rate limiting handling
- * - CSRF token support (if using cookies)
- *
- * ============================================================================
- */
