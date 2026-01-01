@@ -1,11 +1,15 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Sidebar } from "./components/Sidebar";
 import { HeaderPanel } from "./components/HeaderPanel";
 import { DataRowItem } from "./components/DataRowItem";
 import { ResizeHandle } from "./components/ResizeHandle";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import { useColumnResizer, ColumnConfig } from "./hooks/useColumnResizer";
 import { useSidebarResizer } from "./hooks/useSidebarResizer";
+import { useAuth } from "./hooks/useAuth";
+import { AuthProvider } from "./contexts/AuthContext";
+import { setAuthToken, setAuthLogoutCallback } from "./api/client";
 import {
   usePrinciples,
   useSamples,
@@ -58,17 +62,42 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
 ];
 
 // ============================================================================
-// Main App Component
+// Main App Component (Protected)
 // ============================================================================
 
 const App: React.FC = () => {
+  // --------------------------------------------------------------------------
+  // Authentication Integration
+  // --------------------------------------------------------------------------
+
+  const { token, logout, user } = useAuth();
+
+  /**
+   * Sync auth token with API client
+   * Updates token in Axios interceptor when auth state changes
+   */
+  useEffect(() => {
+    setAuthToken(token);
+  }, [token]);
+
+  /**
+   * Register logout callback with API client
+   * Enables auto-logout on 401 responses
+   */
+  useEffect(() => {
+    setAuthLogoutCallback(logout);
+    return () => setAuthLogoutCallback(() => {});
+  }, [logout]);
+
   // --------------------------------------------------------------------------
   // UI State (Local)
   // --------------------------------------------------------------------------
 
   const [selectedPrincipleId, setSelectedPrincipleId] = useState<number>(0);
   const [showRevised, setShowRevised] = useState<boolean>(true);
-  const [currentUserName] = useState<string>("Dr. Jane Smith");
+
+  // Use authenticated user's name for revision tracking
+  const currentUserName = user?.username || "Unknown User";
 
   // Column resizing state
   const { columns, gridTemplateColumns, handleResizeStart, isResizing } =
@@ -326,7 +355,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* Revision Progress Bar & Toolbar */}
+        {/* User Info & Revision Progress Bar */}
         {revisionStats.total > 0 && (
           <div className="px-8 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -401,9 +430,19 @@ const App: React.FC = () => {
                   </>
                 )}
               </button>
-              <span className="text-xs text-slate-400">
-                Reviewer: {currentUserName}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">Logged in as:</span>
+                <span className="text-xs font-medium text-slate-700">
+                  {currentUserName}
+                </span>
+                <button
+                  onClick={logout}
+                  className="ml-2 px-2 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                  title="Logout"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -481,18 +520,36 @@ const App: React.FC = () => {
 };
 
 // ============================================================================
-// App Wrapper with Query Provider
+// App Wrapper with Auth and Query Providers
 // ============================================================================
 
 /**
- * Root component wrapper that provides TanStack Query context
- * This must be the exported component to enable data fetching
+ * Root component wrapper that provides authentication and data fetching context
+ *
+ * Architecture:
+ *   1. AuthProvider: Manages auth state and token storage
+ *   2. QueryClientProvider: Manages API data caching
+ *   3. ProtectedRoute: Enforces authentication before rendering app
+ *   4. App: Main application (only renders when authenticated)
+ *
+ * Security Flow:
+ *   - User lands on app
+ *   - AuthProvider checks for existing session
+ *   - ProtectedRoute blocks app if unauthenticated
+ *   - Login page shown if no valid token
+ *   - App renders only after successful authentication
+ *   - API calls automatically include auth token
+ *   - 401 responses trigger auto-logout
  */
 const AppWrapper: React.FC = () => {
   return (
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
+    <AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <ProtectedRoute>
+          <App />
+        </ProtectedRoute>
+      </QueryClientProvider>
+    </AuthProvider>
   );
 };
 
@@ -500,58 +557,48 @@ export default AppWrapper;
 
 /**
  * ============================================================================
- * MIGRATION NOTES & KNOWN LIMITATIONS
+ * AUTHENTICATION INTEGRATION NOTES
  * ============================================================================
  *
- * REMOVED FEATURES:
+ * AUTHENTICATION FLOW:
+ * --------------------
+ * 1. App loads → AuthProvider checks for existing session
+ * 2. If no token → ProtectedRoute shows Login page
+ * 3. User logs in → AuthContext stores token
+ * 4. Token synced to API client via setAuthToken()
+ * 5. All API calls include Bearer token automatically
+ * 6. App renders with user's name in header
+ * 7. Logout button clears token and redirects to login
+ *
+ * TOKEN MANAGEMENT:
  * -----------------
- * 1. Undo System (Ctrl+Z):
- *    - The previous client-side undo history has been removed
- *    - Reason: Server state makes local history invalid across refreshes
- *    - Future: Requires backend audit log and rollback endpoints
+ * - Token stored in AuthContext (React state)
+ * - Optional persistence via sessionStorage (user opt-in)
+ * - Synced to API client via useEffect
+ * - Cleared on logout (both memory and storage)
+ * - Auto-cleared on 401 responses
  *
- * 2. Static JSON Imports:
- *    - Removed: import initialPrinciples from './principles.json'
- *    - Removed: import initialSamples from './_prompt_type1_without_example_samples.json'
- *    - Replaced with: API calls via TanStack Query
+ * API INTEGRATION:
+ * ----------------
+ * - setAuthToken() updates Axios interceptor
+ * - setAuthLogoutCallback() enables auto-logout on 401
+ * - All existing API calls work unchanged
+ * - Authentication handled transparently
  *
- * NEW FEATURES:
- * -------------
- * 1. Optimistic Updates:
- *    - Principle edits update UI instantly, rollback on error
- *    - Expert opinion changes show immediately (debounced)
+ * USER EXPERIENCE:
+ * ----------------
+ * - User info shown in header (username)
+ * - Logout button visible and accessible
+ * - Revision tracking uses authenticated username
+ * - Seamless transition between auth states
  *
- * 2. Smart Caching:
- *    - Principles cached for 10 minutes
- *    - Samples cached for 2 minutes
- *    - Automatic background refetch when stale
- *
- * 3. Loading & Error States:
- *    - Skeleton screens during initial load
- *    - Error messages with retry buttons
- *    - Loading indicators for async operations
- *
- * CONFIGURATION REQUIRED:
- * -----------------------
- * 1. Environment Variables:
- *    - Create .env file with: VITE_API_BASE_URL=http://localhost:3000/api/v1
- *    - Update for production: VITE_API_BASE_URL=https://api.cogniloop.com/v1
- *
- * 2. Backend Requirements:
- *    - All endpoints from API specification must be implemented
- *    - Response schemas must match TypeScript interfaces
- *    - CORS must be configured for the frontend domain
- *
- * TESTING CHECKLIST:
+ * SECURITY FEATURES:
  * ------------------
- * ✅ App loads principles on mount
- * ✅ Selecting principle fetches samples
- * ✅ Inline edits trigger mutations with optimistic updates
- * ✅ Drag-drop reassignment persists to backend
- * ✅ Show/Hide revised toggle refetches with correct filter
- * ✅ Loading states display during async operations
- * ✅ Error states show user-friendly messages
- * ✅ No TypeScript errors
+ * - No token in localStorage (XSS protection)
+ * - Token sent via header only (not URL)
+ * - Auto-logout on token expiration
+ * - Protected route wrapper (no content leak)
+ * - User explicitly opts into session persistence
  *
  * ============================================================================
  */

@@ -1,6 +1,54 @@
 import { Principle, DataRow } from "../types";
 
 // ============================================================================
+// Authentication Types
+// ============================================================================
+
+/**
+ * Request payload for user login
+ * Endpoint: POST /api/v1/login/access-token
+ */
+export interface LoginRequest {
+  /** User's username */
+  username: string;
+  /** User's password (transmitted over HTTPS only) */
+  password: string;
+}
+
+/**
+ * Response structure for successful authentication
+ * Endpoint: POST /api/v1/login/access-token
+ */
+export interface LoginResponse {
+  /** JWT access token for API authentication */
+  access_token: string;
+  /** Token type (always "bearer" for JWT) */
+  token_type: string;
+}
+
+/**
+ * Validation error detail structure
+ * Returned in 422 responses from FastAPI/Pydantic
+ */
+export interface ValidationError {
+  /** Location of the error (e.g., ["body", "username"]) */
+  loc: string[];
+  /** Human-readable error message */
+  msg: string;
+  /** Error type identifier (e.g., "value_error.missing") */
+  type: string;
+}
+
+/**
+ * Authentication error response structure
+ * Returned for 401 (unauthorized) and 422 (validation) errors
+ */
+export interface AuthError {
+  /** Error message or array of validation errors */
+  detail: string | ValidationError[];
+}
+
+// ============================================================================
 // API Response Wrappers
 // ============================================================================
 

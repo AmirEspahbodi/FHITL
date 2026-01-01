@@ -28,3 +28,5 @@ dist-ssr
 **/*samples.json
 principles.json
 **/principles.json
+
+.env
