@@ -125,10 +125,28 @@ export const authService = {
       // ======================================================================
 
       // If error already has userMessage (from interceptor), just re-throw
-      if (error.userMessage) {
+      // ✅ AFTER (Smart Fix with Edge Cases)
+      if (error.userMessage && error.userMessage.trim()) {
         const uiError = new Error(error.userMessage) as any;
-        uiError.originalError = error;
-        uiError.isRetryable = error.isRetryable;
+
+        // Preserve ALL enhanced error properties
+        uiError.userMessage = error.userMessage;
+        uiError.errorType = error.errorType;
+        uiError.isRetryable = error.isRetryable ?? false;
+
+        // Preserve original error for debugging (avoid circular reference)
+        if (error.response) {
+          uiError.response = error.response;
+        }
+
+        if (import.meta.env.DEV) {
+          console.log("[Auth Service] Re-throwing enhanced error:", {
+            userMessage: uiError.userMessage,
+            errorType: uiError.errorType,
+            isRetryable: uiError.isRetryable,
+          });
+        }
+
         throw uiError;
       }
 

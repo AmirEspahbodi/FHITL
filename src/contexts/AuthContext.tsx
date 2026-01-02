@@ -340,20 +340,90 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (error.userMessage) {
           // Use enhanced error message from API client
           errorMessage = error.userMessage;
-        } else if (error.response) {
-          // HTTP error with response
+        } // ✅ AFTER (Smart Fallback with Edge Cases)
+        // Determine user-friendly error message
+
+        // Priority 1: Use enhanced userMessage if available and non-empty
+        if (
+          error.userMessage &&
+          typeof error.userMessage === "string" &&
+          error.userMessage.trim()
+        ) {
+          errorMessage = error.userMessage;
+        }
+        // Priority 2: Check response status directly (fallback)
+        else if (error.response?.status) {
           const status = error.response.status;
-          if (status === 401) {
-            errorMessage = "Invalid username or password. Please try again.";
-          } else if (status === 403) {
-            errorMessage =
-              "Account access denied. Please contact your administrator.";
-          } else if (status === 429) {
-            errorMessage =
-              "Too many login attempts. Please wait and try again.";
-          } else if (status >= 500) {
-            errorMessage = "Server error. Please try again later.";
+          const detail = error.response.data?.detail;
+
+          switch (status) {
+            case 400:
+              errorMessage =
+                detail || "Invalid request. Please check your input.";
+              break;
+            case 401:
+              errorMessage = "Invalid username or password. Please try again.";
+              break;
+            case 403:
+              errorMessage =
+                "Account access denied. Please contact your administrator.";
+              break;
+            case 429:
+              // Extract retry-after if available
+              const retryAfter = error.response.headers?.["retry-after"];
+              const waitTime = retryAfter
+                ? `${retryAfter} seconds`
+                : "a few moments";
+              errorMessage =
+                detail ||
+                `Too many login attempts. Please wait ${waitTime} and try again.`;
+              break;
+            case 422:
+              errorMessage =
+                detail || "Invalid input. Please check your credentials.";
+              break;
+            case 500:
+            case 502:
+            case 503:
+            case 504:
+              errorMessage = "Server error. Please try again later.";
+              break;
+            default:
+              errorMessage =
+                detail ||
+                `Request failed with status ${status}. Please try again.`;
           }
+        }
+        // Priority 3: Check for network/timeout errors
+        else if (error.request) {
+          if (
+            error.code === "ECONNABORTED" ||
+            error.message?.includes("timeout")
+          ) {
+            errorMessage = "Connection timeout. Please try again.";
+          } else if (
+            error.code === "ERR_NETWORK" ||
+            error.code === "ERR_CONNECTION_REFUSED"
+          ) {
+            errorMessage =
+              "Unable to connect to server. Please check your internet connection.";
+          } else {
+            errorMessage =
+              "Network error. Please check your connection and try again.";
+          }
+        }
+        // Priority 4: Use error.message as last resort
+        else if (error.message && typeof error.message === "string") {
+          errorMessage = error.message;
+        }
+
+        if (import.meta.env.DEV) {
+          console.log("[Auth Context] Login error handled:", {
+            finalMessage: errorMessage,
+            hadUserMessage: !!error.userMessage,
+            status: error.response?.status,
+            errorType: error.errorType,
+          });
         } else if (error.request) {
           // Request made but no response (network error)
           errorMessage =

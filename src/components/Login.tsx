@@ -164,6 +164,14 @@ export const Login: React.FC = () => {
         isRetryable,
         isDismissed: false,
       });
+      if (!errorMessage || !errorMessage.trim()) {
+        console.error("[Login] Empty error message detected, using fallback");
+        setError({
+          message: "An error occurred during login. Please try again.",
+          isRetryable: true,
+          isDismissed: false,
+        });
+      }
 
       // Check if storage warning should be shown
       if (rememberMe && errorMessage.includes("session persistence failed")) {
