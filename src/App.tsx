@@ -21,19 +21,15 @@ import {
 // Query Client Configuration
 // ============================================================================
 
-/**
- * TanStack Query client with global configuration
- * Created outside component to maintain single instance across app lifecycle
- */
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 2, // Retry failed queries twice before showing error
-      refetchOnWindowFocus: false, // Disable automatic refetch on window focus
-      staleTime: 0, // Data is stale immediately (per-query overrides apply)
+      retry: 2,
+      refetchOnWindowFocus: false,
+      staleTime: 0,
     },
     mutations: {
-      retry: 1, // Retry failed mutations once
+      retry: 1,
     },
   },
 });
@@ -42,10 +38,6 @@ const queryClient = new QueryClient({
 // Column Configuration
 // ============================================================================
 
-/**
- * Initial column widths and constraints for the data table
- * Matches previous layout from Tailwind col-span classes
- */
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: "preceding", label: "Preceding", width: 100, minWidth: 60 },
   { id: "target", label: "Target", width: 280, minWidth: 150 },
@@ -72,18 +64,10 @@ const App: React.FC = () => {
 
   const { token, logout, user } = useAuth();
 
-  /**
-   * Sync auth token with API client
-   * Updates token in Axios interceptor when auth state changes
-   */
   useEffect(() => {
     setAuthToken(token);
   }, [token]);
 
-  /**
-   * Register logout callback with API client
-   * Enables auto-logout on 401 responses
-   */
   useEffect(() => {
     setAuthLogoutCallback(logout);
     return () => setAuthLogoutCallback(() => {});
@@ -93,17 +77,15 @@ const App: React.FC = () => {
   // UI State (Local)
   // --------------------------------------------------------------------------
 
-  const [selectedPrincipleId, setSelectedPrincipleId] = useState<number>(0);
+  // Changed initial state to empty string
+  const [selectedPrincipleId, setSelectedPrincipleId] = useState<string>("");
   const [showRevised, setShowRevised] = useState<boolean>(true);
 
-  // Use authenticated user's name for revision tracking
   const currentUserName = user?.username || "Unknown User";
 
-  // Column resizing state
   const { columns, gridTemplateColumns, handleResizeStart, isResizing } =
     useColumnResizer(DEFAULT_COLUMNS);
 
-  // Sidebar resizing state
   const {
     sidebarWidth,
     isResizing: isSidebarResizing,
@@ -121,20 +103,12 @@ const App: React.FC = () => {
   // Server State (TanStack Query)
   // --------------------------------------------------------------------------
 
-  /**
-   * Fetch all principles
-   * Runs once on mount, cached for 10 minutes
-   */
   const {
     data: principles,
     isLoading: principlesLoading,
     error: principlesError,
   } = usePrinciples();
 
-  /**
-   * Fetch samples for selected principle with revision filter
-   * Refetches when principleId or showRevised changes
-   */
   const {
     data: samplesData,
     isLoading: samplesLoading,
@@ -144,9 +118,6 @@ const App: React.FC = () => {
     showRevised,
   });
 
-  /**
-   * Mutation hooks for data modifications
-   */
   const { updatePrinciple } = usePrincipleMutations();
   const { updateOpinion, toggleRevision, reassignSample } =
     useSampleMutations();
@@ -163,7 +134,7 @@ const App: React.FC = () => {
 
   // Initialize selectedPrincipleId when principles load
   React.useEffect(() => {
-    if (principles && principles.length > 0 && selectedPrincipleId === 0) {
+    if (principles && principles.length > 0 && selectedPrincipleId === "") {
       setSelectedPrincipleId(principles[0].id);
     }
   }, [principles, selectedPrincipleId]);
@@ -179,55 +150,38 @@ const App: React.FC = () => {
   // Event Handlers (Now using mutations)
   // --------------------------------------------------------------------------
 
-  /**
-   * Handle principle name change from Sidebar
-   * Triggers: Triple-click on principle name
-   */
-  const handleRenamePrinciple = (id: number, newName: string) => {
+  const handleRenamePrinciple = (id: string, newName: string) => {
+    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { label_name: newName },
     });
   };
 
-  /**
-   * Handle principle definition update from HeaderPanel
-   * Triggers: Blur event on definition field
-   */
-  const handleUpdateDescription = (id: number, newDesc: string) => {
+  const handleUpdateDescription = (id: string, newDesc: string) => {
+    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { definition: newDesc },
     });
   };
 
-  /**
-   * Handle inclusion criteria update from HeaderPanel
-   * Triggers: Blur event on inclusion field
-   */
-  const handleUpdateInclusion = (id: number, newCriteria: string) => {
+  const handleUpdateInclusion = (id: string, newCriteria: string) => {
+    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { inclusion_criteria: newCriteria },
     });
   };
 
-  /**
-   * Handle exclusion criteria update from HeaderPanel
-   * Triggers: Blur event on exclusion field
-   */
-  const handleUpdateExclusion = (id: number, newCriteria: string) => {
+  const handleUpdateExclusion = (id: string, newCriteria: string) => {
+    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { exclusion_criteria: newCriteria },
     });
   };
 
-  /**
-   * Handle expert opinion update from DataRowItem
-   * Triggers: Blur event on opinion textarea (debounced in DataRowItem)
-   * Note: Does NOT auto-mark as revised
-   */
   const handleUpdateExpertOpinion = (rowId: string, newOpinion: string) => {
     updateOpinion.mutate({
       id: rowId,
@@ -235,10 +189,6 @@ const App: React.FC = () => {
     });
   };
 
-  /**
-   * Handle manual revision toggle from DataRowItem
-   * Triggers: "Set as Revised" button click
-   */
   const handleToggleRevision = (
     rowId: string,
     isRevised: boolean,
@@ -251,12 +201,8 @@ const App: React.FC = () => {
     });
   };
 
-  /**
-   * Handle sample reassignment via drag-drop
-   * Triggers: Drop event on Sidebar principle
-   * Auto-marks sample as revised
-   */
-  const handleDropRow = (rowId: string, targetPrincipleId: number) => {
+  const handleDropRow = (rowId: string, targetPrincipleId: string) => {
+    // Changed type
     if (targetPrincipleId === selectedPrincipleId) return;
 
     reassignSample.mutate({
@@ -519,28 +465,6 @@ const App: React.FC = () => {
   );
 };
 
-// ============================================================================
-// App Wrapper with Auth and Query Providers
-// ============================================================================
-
-/**
- * Root component wrapper that provides authentication and data fetching context
- *
- * Architecture:
- *   1. AuthProvider: Manages auth state and token storage
- *   2. QueryClientProvider: Manages API data caching
- *   3. ProtectedRoute: Enforces authentication before rendering app
- *   4. App: Main application (only renders when authenticated)
- *
- * Security Flow:
- *   - User lands on app
- *   - AuthProvider checks for existing session
- *   - ProtectedRoute blocks app if unauthenticated
- *   - Login page shown if no valid token
- *   - App renders only after successful authentication
- *   - API calls automatically include auth token
- *   - 401 responses trigger auto-logout
- */
 const AppWrapper: React.FC = () => {
   return (
     <AuthProvider>
@@ -554,51 +478,3 @@ const AppWrapper: React.FC = () => {
 };
 
 export default AppWrapper;
-
-/**
- * ============================================================================
- * AUTHENTICATION INTEGRATION NOTES
- * ============================================================================
- *
- * AUTHENTICATION FLOW:
- * --------------------
- * 1. App loads → AuthProvider checks for existing session
- * 2. If no token → ProtectedRoute shows Login page
- * 3. User logs in → AuthContext stores token
- * 4. Token synced to API client via setAuthToken()
- * 5. All API calls include Bearer token automatically
- * 6. App renders with user's name in header
- * 7. Logout button clears token and redirects to login
- *
- * TOKEN MANAGEMENT:
- * -----------------
- * - Token stored in AuthContext (React state)
- * - Optional persistence via sessionStorage (user opt-in)
- * - Synced to API client via useEffect
- * - Cleared on logout (both memory and storage)
- * - Auto-cleared on 401 responses
- *
- * API INTEGRATION:
- * ----------------
- * - setAuthToken() updates Axios interceptor
- * - setAuthLogoutCallback() enables auto-logout on 401
- * - All existing API calls work unchanged
- * - Authentication handled transparently
- *
- * USER EXPERIENCE:
- * ----------------
- * - User info shown in header (username)
- * - Logout button visible and accessible
- * - Revision tracking uses authenticated username
- * - Seamless transition between auth states
- *
- * SECURITY FEATURES:
- * ------------------
- * - No token in localStorage (XSS protection)
- * - Token sent via header only (not URL)
- * - Auto-logout on token expiration
- * - Protected route wrapper (no content leak)
- * - User explicitly opts into session persistence
- *
- * ============================================================================
- */

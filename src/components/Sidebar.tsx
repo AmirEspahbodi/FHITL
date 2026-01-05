@@ -4,10 +4,10 @@ import { SidebarResizeHandle } from "./SidebarResizeHandle";
 
 interface SidebarProps {
   principles: Principle[];
-  selectedId: number;
-  onSelect: (id: number) => void;
-  onRename: (id: number, newName: string) => void;
-  onDropRow: (rowId: string, targetPrincipleId: number) => void;
+  selectedId: string; // Changed from number
+  onSelect: (id: string) => void; // Changed from number
+  onRename: (id: string, newName: string) => void; // Changed from number
+  onDropRow: (rowId: string, targetPrincipleId: string) => void; // Changed from number
   width: number;
   isCollapsed: boolean;
   isResizing: boolean;
@@ -27,9 +27,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onResizeStart,
   onDoubleClick,
 }) => {
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null); // Changed type
   const [editValue, setEditValue] = useState("");
-  const [dragOverId, setDragOverId] = useState<number | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null); // Changed type
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -38,7 +38,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [editingId]);
 
-  const handleClick = (e: React.MouseEvent, id: number) => {
+  const handleClick = (e: React.MouseEvent, id: string) => {
+    // Changed type
     if (editingId !== id) {
       onSelect(id);
     }
@@ -64,7 +65,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const handleDragOver = (e: React.DragEvent, id: number) => {
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    // Changed type
     e.preventDefault();
     setDragOverId(id);
   };
@@ -73,7 +75,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setDragOverId(null);
   };
 
-  const handleDrop = (e: React.DragEvent, targetId: number) => {
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    // Changed type
     e.preventDefault();
     setDragOverId(null);
     const rowId = e.dataTransfer.getData("text/plain");
@@ -153,7 +156,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         Triple-click to rename
       </div>
 
-      {/* Resize Handle */}
       <SidebarResizeHandle
         onMouseDown={(e) => onResizeStart(e.clientX)}
         onDoubleClick={onDoubleClick}

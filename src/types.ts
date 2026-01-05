@@ -6,7 +6,7 @@ export interface DataRow {
   A1_Score: number;
   A2_Score: number;
   A3_Score: number;
-  principle_id: number;
+  principle_id: string; // Changed from number to string
   llm_justification: string;
   llm_evidence_quote: string;
   expert_opinion: string;
@@ -16,7 +16,7 @@ export interface DataRow {
 }
 
 export interface Principle {
-  id: number;
+  id: string; // Changed from number to string
   label_name: string;
   definition: string;
   inclusion_criteria: string;
@@ -26,7 +26,7 @@ export interface Principle {
 export interface AppState {
   principles: Principle[];
   data: DataRow[];
-  selectedPrincipleId: number;
+  selectedPrincipleId: string; // Changed from number to string
 }
 
 // Type for the revision action
