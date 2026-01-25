@@ -62,7 +62,7 @@ export interface ToggleSampleRevisionRequest {
 }
 
 export interface ReassignSampleRequest {
-  target_principle_id: string; // Changed from number to string
+  target_principle_id: string;
   reviser_name: string;
 }
 
@@ -72,4 +72,16 @@ export interface ApiErrorResponse {
     code?: string;
     details?: Record<string, unknown>;
   };
+}
+
+// ============================================================================
+// User Management
+// ============================================================================
+
+export interface User {
+  id: string;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  is_superuser: boolean;
 }

@@ -12,6 +12,7 @@ import React, {
 
 interface User {
   username: string;
+  user_type: "superuser" | "normal";
 }
 
 interface AuthState {
@@ -46,6 +47,7 @@ export const AuthContext = createContext<AuthContextValue | undefined>(
 
 const TOKEN_STORAGE_KEY = "cogniloop_auth_token";
 const USER_STORAGE_KEY = "cogniloop_auth_user";
+const USER_TYPE_STORAGE_KEY = "cogniloop_auth_type";
 const PERSIST_STORAGE_KEY = "cogniloop_persist_session";
 
 // ============================================================================
@@ -209,6 +211,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       safeRemoveItem(TOKEN_STORAGE_KEY);
       safeRemoveItem(USER_STORAGE_KEY);
+      safeRemoveItem(USER_TYPE_STORAGE_KEY);
       safeRemoveItem(PERSIST_STORAGE_KEY);
 
       if (import.meta.env.DEV) {
@@ -248,7 +251,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           throw new Error("No response received from server");
         }
 
-        const { access_token } = response;
+        const { access_token, user_type } = response;
 
         if (!access_token) {
           console.error(
@@ -278,11 +281,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (rememberMe) {
           storageSuccess = storeToken(access_token, true);
 
-          // Also persist username and preference
+          // Also persist username, user_type and preference
           const userStored = safeSetItem(USER_STORAGE_KEY, username);
+          const typeStored = safeSetItem(USER_TYPE_STORAGE_KEY, user_type);
           const prefStored = safeSetItem(PERSIST_STORAGE_KEY, "true");
 
-          if (!userStored || !prefStored) {
+          if (!userStored || !typeStored || !prefStored) {
             storageSuccess = false;
           }
         }
@@ -295,14 +299,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           token: access_token,
           isAuthenticated: true,
           isLoading: false,
-          user: { username },
+          user: { username, user_type },
           persistSession: rememberMe && storageSuccess,
         });
 
         // Notify user if storage failed but login succeeded
         if (rememberMe && !storageSuccess) {
-          // Note: This notification should be shown in the UI
-          // The component calling login should handle this
           console.warn(
             "[Auth] Login successful but session persistence failed. " +
               "You will need to log in again when you close this tab.",
@@ -312,6 +314,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (import.meta.env.DEV) {
           console.log("[Auth] Login successful:", {
             username,
+            user_type,
             tokenReceived: true,
             sessionPersisted: rememberMe && storageSuccess,
           });
@@ -320,6 +323,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // ====================================================================
         // ERROR HANDLING
         // ====================================================================
+        // (Existing error handling logic retained)
 
         console.error("[Auth] Login failed:", error);
 
@@ -337,22 +341,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Determine user-friendly error message
         let errorMessage = "Authentication failed. Please try again.";
 
-        if (error.userMessage) {
-          // Use enhanced error message from API client
-          errorMessage = error.userMessage;
-        } // ✅ AFTER (Smart Fallback with Edge Cases)
-        // Determine user-friendly error message
-
-        // Priority 1: Use enhanced userMessage if available and non-empty
         if (
           error.userMessage &&
           typeof error.userMessage === "string" &&
           error.userMessage.trim()
         ) {
           errorMessage = error.userMessage;
-        }
-        // Priority 2: Check response status directly (fallback)
-        else if (error.response?.status) {
+        } else if (error.response?.status) {
           const status = error.response.status;
           const detail = error.response.data?.detail;
 
@@ -369,7 +364,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 "Account access denied. Please contact your administrator.";
               break;
             case 429:
-              // Extract retry-after if available
               const retryAfter = error.response.headers?.["retry-after"];
               const waitTime = retryAfter
                 ? `${retryAfter} seconds`
@@ -393,9 +387,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 detail ||
                 `Request failed with status ${status}. Please try again.`;
           }
-        }
-        // Priority 3: Check for network/timeout errors
-        else if (error.request) {
+        } else if (error.request) {
           if (
             error.code === "ECONNABORTED" ||
             error.message?.includes("timeout")
@@ -411,35 +403,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             errorMessage =
               "Network error. Please check your connection and try again.";
           }
-        }
-        // Priority 4: Use error.message as last resort
-        else if (error.message && typeof error.message === "string") {
+        } else if (error.message && typeof error.message === "string") {
           errorMessage = error.message;
-        }
-
-        if (import.meta.env.DEV) {
-          console.log("[Auth Context] Login error handled:", {
-            finalMessage: errorMessage,
-            hadUserMessage: !!error.userMessage,
-            status: error.response?.status,
-            errorType: error.errorType,
-          });
-        } else if (error.request) {
-          // Request made but no response (network error)
-          errorMessage =
-            "Unable to connect to server. Please check your internet connection.";
-        } else if (error.message) {
-          // Other errors (validation, setup, etc.)
-          if (error.message.includes("timeout")) {
-            errorMessage = "Connection timeout. Please try again.";
-          } else if (error.message.includes("Network Error")) {
-            errorMessage = "Network error. Please check your connection.";
-          } else if (
-            error.message.includes("Invalid response") ||
-            error.message.includes("missing")
-          ) {
-            errorMessage = error.message; // Use our custom validation messages
-          }
         }
 
         // Re-throw with sanitized message
@@ -485,11 +450,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
           if (authState.user) {
             safeSetItem(USER_STORAGE_KEY, authState.user.username);
+            safeSetItem(USER_TYPE_STORAGE_KEY, authState.user.user_type);
           }
         } else {
           safeRemoveItem(PERSIST_STORAGE_KEY);
           safeRemoveItem(TOKEN_STORAGE_KEY);
           safeRemoveItem(USER_STORAGE_KEY);
+          safeRemoveItem(USER_TYPE_STORAGE_KEY);
         }
       } catch (error) {
         console.error("[Auth] Failed to update persistence preference:", error);
@@ -519,6 +486,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Check for existing token
         const token = retrieveToken();
         const username = safeGetItem(USER_STORAGE_KEY);
+        const storedUserType = safeGetItem(USER_TYPE_STORAGE_KEY);
 
         if (!token || !username) {
           if (import.meta.env.DEV) {
@@ -527,6 +495,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setAuthState((prev) => ({ ...prev, isLoading: false }));
           return;
         }
+
+        // Determine user type (fallback to normal for backward compatibility)
+        const user_type: "superuser" | "normal" =
+          storedUserType === "superuser" ? "superuser" : "normal";
 
         // Validate token format
         if (!isValidTokenFormat(token)) {
@@ -562,7 +534,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           token,
           isAuthenticated: true,
           isLoading: false,
-          user: { username },
+          user: { username, user_type },
           persistSession: true,
         });
 

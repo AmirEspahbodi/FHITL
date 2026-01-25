@@ -5,6 +5,7 @@ import { HeaderPanel } from "./components/HeaderPanel";
 import { DataRowItem } from "./components/DataRowItem";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AdminDashboard } from "./components/AdminDashboard";
 import { useColumnResizer, ColumnConfig } from "./hooks/useColumnResizer";
 import { useSidebarResizer } from "./hooks/useSidebarResizer";
 import { useAuth } from "./hooks/useAuth";
@@ -50,34 +51,20 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   },
   { id: "evidence", label: "LLM Evidence", width: 300, minWidth: 100 },
   { id: "expert", label: "Expert Opinion", width: 150, minWidth: 100 },
-  { id: "score", label: "Score", width: 80, minWidth: 60 } /* A Score */,
+  { id: "score", label: "Score", width: 80, minWidth: 60 },
 ];
 
 // ============================================================================
-// Main App Component (Protected)
+// User Dashboard Component (Formerly App)
 // ============================================================================
 
-const App: React.FC = () => {
-  // --------------------------------------------------------------------------
-  // Authentication Integration
-  // --------------------------------------------------------------------------
-
-  const { token, logout, user } = useAuth();
-
-  useEffect(() => {
-    setAuthToken(token);
-  }, [token]);
-
-  useEffect(() => {
-    setAuthLogoutCallback(logout);
-    return () => setAuthLogoutCallback(() => {});
-  }, [logout]);
+const UserDashboard: React.FC = () => {
+  const { logout, user } = useAuth();
 
   // --------------------------------------------------------------------------
   // UI State (Local)
   // --------------------------------------------------------------------------
 
-  // Changed initial state to empty string
   const [selectedPrincipleId, setSelectedPrincipleId] = useState<string>("");
   const [showRevised, setShowRevised] = useState<boolean>(true);
 
@@ -147,11 +134,10 @@ const App: React.FC = () => {
   };
 
   // --------------------------------------------------------------------------
-  // Event Handlers (Now using mutations)
+  // Event Handlers
   // --------------------------------------------------------------------------
 
   const handleRenamePrinciple = (id: string, newName: string) => {
-    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { label_name: newName },
@@ -159,7 +145,6 @@ const App: React.FC = () => {
   };
 
   const handleUpdateDescription = (id: string, newDesc: string) => {
-    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { definition: newDesc },
@@ -167,7 +152,6 @@ const App: React.FC = () => {
   };
 
   const handleUpdateInclusion = (id: string, newCriteria: string) => {
-    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { inclusion_criteria: newCriteria },
@@ -175,7 +159,6 @@ const App: React.FC = () => {
   };
 
   const handleUpdateExclusion = (id: string, newCriteria: string) => {
-    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { exclusion_criteria: newCriteria },
@@ -202,7 +185,6 @@ const App: React.FC = () => {
   };
 
   const handleDropRow = (rowId: string, targetPrincipleId: string) => {
-    // Changed type
     if (targetPrincipleId === selectedPrincipleId) return;
 
     reassignSample.mutate({
@@ -213,7 +195,7 @@ const App: React.FC = () => {
   };
 
   // --------------------------------------------------------------------------
-  // Loading State
+  // Loading & Error States
   // --------------------------------------------------------------------------
 
   if (principlesLoading) {
@@ -228,10 +210,6 @@ const App: React.FC = () => {
       </div>
     );
   }
-
-  // --------------------------------------------------------------------------
-  // Error State
-  // --------------------------------------------------------------------------
 
   if (principlesError) {
     return (
@@ -273,7 +251,7 @@ const App: React.FC = () => {
   }
 
   // --------------------------------------------------------------------------
-  // Main Render
+  // Render User Dashboard
   // --------------------------------------------------------------------------
 
   return (
@@ -463,6 +441,31 @@ const App: React.FC = () => {
       </main>
     </div>
   );
+};
+
+// ============================================================================
+// Main App Component (Routing)
+// ============================================================================
+
+const App: React.FC = () => {
+  const { token, logout, user } = useAuth();
+
+  // Set global auth token
+  useEffect(() => {
+    setAuthToken(token);
+  }, [token]);
+
+  // Set global logout callback
+  useEffect(() => {
+    setAuthLogoutCallback(logout);
+    return () => setAuthLogoutCallback(() => {});
+  }, [logout]);
+
+  if (user?.user_type === "superuser") {
+    return <AdminDashboard />;
+  }
+
+  return <UserDashboard />;
 };
 
 const AppWrapper: React.FC = () => {
