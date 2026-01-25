@@ -39,18 +39,18 @@ const queryClient = new QueryClient({
 // ============================================================================
 
 const DEFAULT_COLUMNS: ColumnConfig[] = [
-  { id: "preceding", label: "Preceding", width: 100, minWidth: 60 },
-  { id: "target", label: "Target", width: 280, minWidth: 150 },
-  { id: "following", label: "Following", width: 100, minWidth: 60 },
+  { id: "preceding", label: "Preceding", width: 200, minWidth: 60 },
+  { id: "target", label: "Target", width: 300, minWidth: 150 },
+  { id: "following", label: "Following", width: 200, minWidth: 60 },
   {
     id: "justification",
     label: "LLM Justification",
-    width: 220,
+    width: 280,
     minWidth: 100,
   },
-  { id: "evidence", label: "LLM Evidence", width: 220, minWidth: 100 },
-  { id: "expert", label: "Expert Opinion", width: 220, minWidth: 100 },
-  { id: "score", label: "Score", width: 80, minWidth: 60 },
+  { id: "evidence", label: "LLM Evidence", width: 300, minWidth: 100 },
+  { id: "expert", label: "Expert Opinion", width: 150, minWidth: 100 },
+  { id: "score", label: "Score", width: 80, minWidth: 60 } /* A Score */,
 ];
 
 // ============================================================================
