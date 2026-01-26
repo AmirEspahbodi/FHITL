@@ -5,7 +5,7 @@ import { HeaderPanel } from "./components/HeaderPanel";
 import { DataRowItem } from "./components/DataRowItem";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import { UserListModal } from "./components/UserListModal";
+import { AdminDashboard } from "./components/AdminDashboard"; // Import AdminDashboard
 import { useColumnResizer, ColumnConfig } from "./hooks/useColumnResizer";
 import { useSidebarResizer } from "./hooks/useSidebarResizer";
 import { useAuth } from "./hooks/useAuth";
@@ -51,11 +51,11 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   },
   { id: "evidence", label: "LLM Evidence", width: 300, minWidth: 100 },
   { id: "expert", label: "Expert Opinion", width: 150, minWidth: 100 },
-  { id: "score", label: "Score", width: 80, minWidth: 60 } /* A Score */,
+  { id: "score", label: "Score", width: 80, minWidth: 60 },
 ];
 
 // ============================================================================
-// Main App Component (Protected)
+// Main App Component (Normal User Dashboard)
 // ============================================================================
 
 const App: React.FC = () => {
@@ -78,10 +78,10 @@ const App: React.FC = () => {
   // UI State (Local)
   // --------------------------------------------------------------------------
 
-  // Changed initial state to empty string
   const [selectedPrincipleId, setSelectedPrincipleId] = useState<string>("");
   const [showRevised, setShowRevised] = useState<boolean>(true);
-  const [isUsersModalOpen, setIsUsersModalOpen] = useState<boolean>(false);
+
+  // REMOVED: isUsersModalOpen state
 
   const currentUserName = user?.username || "Unknown User";
 
@@ -134,7 +134,6 @@ const App: React.FC = () => {
     [principles, selectedPrincipleId],
   );
 
-  // Initialize selectedPrincipleId when principles load
   React.useEffect(() => {
     if (principles && principles.length > 0 && selectedPrincipleId === "") {
       setSelectedPrincipleId(principles[0].id);
@@ -149,11 +148,10 @@ const App: React.FC = () => {
   };
 
   // --------------------------------------------------------------------------
-  // Event Handlers (Now using mutations)
+  // Event Handlers
   // --------------------------------------------------------------------------
 
   const handleRenamePrinciple = (id: string, newName: string) => {
-    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { label_name: newName },
@@ -161,7 +159,6 @@ const App: React.FC = () => {
   };
 
   const handleUpdateDescription = (id: string, newDesc: string) => {
-    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { definition: newDesc },
@@ -169,7 +166,6 @@ const App: React.FC = () => {
   };
 
   const handleUpdateInclusion = (id: string, newCriteria: string) => {
-    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { inclusion_criteria: newCriteria },
@@ -177,7 +173,6 @@ const App: React.FC = () => {
   };
 
   const handleUpdateExclusion = (id: string, newCriteria: string) => {
-    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { exclusion_criteria: newCriteria },
@@ -204,7 +199,6 @@ const App: React.FC = () => {
   };
 
   const handleDropRow = (rowId: string, targetPrincipleId: string) => {
-    // Changed type
     if (targetPrincipleId === selectedPrincipleId) return;
 
     reassignSample.mutate({
@@ -215,7 +209,7 @@ const App: React.FC = () => {
   };
 
   // --------------------------------------------------------------------------
-  // Loading State
+  // Loading & Error States
   // --------------------------------------------------------------------------
 
   if (principlesLoading) {
@@ -230,10 +224,6 @@ const App: React.FC = () => {
       </div>
     );
   }
-
-  // --------------------------------------------------------------------------
-  // Error State
-  // --------------------------------------------------------------------------
 
   if (principlesError) {
     return (
@@ -280,10 +270,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen bg-slate-50 overflow-hidden text-slate-800 font-sans">
-      <UserListModal
-        isOpen={isUsersModalOpen}
-        onClose={() => setIsUsersModalOpen(false)}
-      />
+      {/* REMOVED: UserListModal Component */}
 
       <Sidebar
         principles={principles}
@@ -308,7 +295,6 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* User Info & Revision Progress Bar */}
         {revisionStats.total > 0 && (
           <div className="px-8 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -343,62 +329,11 @@ const App: React.FC = () => {
                   }
                 `}
               >
-                {showRevised ? (
-                  <>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="w-4 h-4"
-                    >
-                      <path d="M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
-                      <path
-                        fillRule="evenodd"
-                        d="M.664 10.59a1.651 1.651 0 0 1 0-1.186A10.004 10.004 0 0 1 10 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0 1 10 17c-4.257 0-7.893-2.66-9.336-6.41ZM14 10a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    Hide Revised
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="w-4 h-4"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M3.28 2.22a.75.75 0 0 0-1.06 1.06l14.5 14.5a.75.75 0 1 0 1.06-1.06l-1.745-1.745a10.029 10.029 0 0 0 3.3-5.975.75.75 0 0 0 0-.586A10.004 10.004 0 0 0 10 3c-2.454 0-4.697.876-6.463 2.33L3.28 2.22Zm6.413 6.413-.996-.997a2.5 2.5 0 1 0 3.738 3.737l-.997-.996a1 1 0 0 1-1.745-1.744Z"
-                        clipRule="evenodd"
-                      />
-                      <path
-                        fillRule="evenodd"
-                        d="M.664 10.59a1.651 1.651 0 0 1 0-1.186A10.004 10.004 0 0 1 3.53 5.372l3.435 3.435a4.002 4.002 0 0 0 4.662 4.663l3.436 3.435A10.004 10.004 0 0 1 .664 10.59Z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    Show Revised
-                  </>
-                )}
+                {showRevised ? "Hide Revised" : "Show Revised"}
               </button>
 
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsUsersModalOpen(true)}
-                  className="mr-2 px-3 py-1.5 bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 hover:text-slate-800 rounded-md text-xs font-medium shadow-sm transition-all flex items-center gap-2"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className="w-4 h-4 text-slate-400"
-                  >
-                    <path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.465 14.493a1.23 1.23 0 0 0 .41 1.412A9.957 9.957 0 0 0 10 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 0 0-13.074.003Z" />
-                  </svg>
-                  Users
-                </button>
+                {/* REMOVED: Users Button */}
 
                 <span className="text-xs text-slate-500">Logged in as:</span>
                 <span className="text-xs font-medium text-slate-700">
@@ -488,12 +423,32 @@ const App: React.FC = () => {
   );
 };
 
+// ============================================================================
+// Layout / Role Routing Logic
+// ============================================================================
+
+const MainContent: React.FC = () => {
+  const { user } = useAuth();
+
+  // If user is explicitly a superuser, show Admin Dashboard
+  if (user?.user_type === "superuser") {
+    return <AdminDashboard />;
+  }
+
+  // Otherwise (normal user), show standard App
+  return <App />;
+};
+
+// ============================================================================
+// App Wrapper
+// ============================================================================
+
 const AppWrapper: React.FC = () => {
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClient}>
         <ProtectedRoute>
-          <App />
+          <MainContent />
         </ProtectedRoute>
       </QueryClientProvider>
     </AuthProvider>
