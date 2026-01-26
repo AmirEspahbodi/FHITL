@@ -1,5 +1,72 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+import axios, {
+  AxiosError,
+  InternalAxiosRequestConfig,
+  AxiosResponse,
+} from "axios";
 import { ApiErrorResponse } from "./types";
+
+// ============================================================================
+// TypeScript Extensions & Types
+// ============================================================================
+
+// Extend Axios config to include metadata for timing
+declare module "axios" {
+  export interface InternalAxiosRequestConfig {
+    metadata?: {
+      startTime: number;
+    };
+  }
+}
+
+// ============================================================================
+// Logging & Sanitization Utilities
+// ============================================================================
+
+const SENSITIVE_KEYS = [
+  "password",
+  "token",
+  "accessToken",
+  "refreshToken",
+  "authorization",
+  "secret",
+  "creditCard",
+];
+
+/**
+ * Recursively redacts sensitive keys in objects or arrays.
+ * Returns a deep copy to avoid mutating the original request data.
+ */
+const redactData = (data: any): any => {
+  if (!data) return data;
+  if (typeof data === "string") return data; // Can't parse raw strings easily
+  if (typeof data !== "object") return data;
+
+  if (Array.isArray(data)) {
+    return data.map((item) => redactData(item));
+  }
+
+  const sanitized = { ...data };
+
+  for (const key of Object.keys(sanitized)) {
+    if (SENSITIVE_KEYS.some((k) => key.toLowerCase().includes(k))) {
+      sanitized[key] = "[REDACTED]";
+    } else if (typeof sanitized[key] === "object") {
+      sanitized[key] = redactData(sanitized[key]);
+    }
+  }
+
+  return sanitized;
+};
+
+const consoleStyles = {
+  request:
+    "color: #3b82f6; font-weight: bold; background: #eff6ff; padding: 2px 5px; border-radius: 2px;",
+  success:
+    "color: #22c55e; font-weight: bold; background: #f0fdf4; padding: 2px 5px; border-radius: 2px;",
+  error:
+    "color: #ef4444; font-weight: bold; background: #fef2f2; padding: 2px 5px; border-radius: 2px;",
+  info: "color: #6b7280; font-weight: normal;",
+};
 
 // ============================================================================
 // Configuration
@@ -27,7 +94,10 @@ let authLogoutCallback: (() => void) | null = null;
 export const setAuthToken = (token: string | null): void => {
   currentAuthToken = token;
   if (import.meta.env.DEV) {
-    console.log("[API Client] Auth token", token ? "set" : "cleared");
+    console.log(
+      `%c[Auth] Token ${token ? "Set" : "Cleared"}`,
+      consoleStyles.info,
+    );
   }
 };
 
@@ -43,9 +113,6 @@ export const getAuthToken = (): string | null => {
 // Enhanced Error Types
 // ============================================================================
 
-/**
- * Categorized error types for better error handling
- */
 export enum ApiErrorType {
   NETWORK_ERROR = "NETWORK_ERROR",
   TIMEOUT_ERROR = "TIMEOUT_ERROR",
@@ -58,9 +125,6 @@ export enum ApiErrorType {
   UNKNOWN = "UNKNOWN",
 }
 
-/**
- * Enhanced error object with user-friendly messaging
- */
 export interface EnhancedApiError extends AxiosError<ApiErrorResponse> {
   userMessage: string;
   errorType: ApiErrorType;
@@ -73,24 +137,52 @@ export interface EnhancedApiError extends AxiosError<ApiErrorResponse> {
 
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    if (import.meta.env.DEV) {
-      console.log(
-        `[API Request] ${config.method?.toUpperCase()} ${config.url}`,
-      );
-    }
+    // 1. Add Timing Metadata
+    config.metadata = { startTime: Date.now() };
 
+    // 2. Inject Auth Token
     const isLoginRequest = config.url?.includes("/login");
-
     if (!isLoginRequest && currentAuthToken) {
       if (config.headers) {
         config.headers.Authorization = `Bearer ${currentAuthToken}`;
       }
     }
 
+    // 3. Logging (Dev Only)
+    if (import.meta.env.DEV) {
+      const { method, url, params, data, headers } = config;
+
+      console.groupCollapsed(
+        `%c🚀 Request%c ${method?.toUpperCase()} ${url}`,
+        consoleStyles.request,
+        "color: inherit; font-weight: normal;",
+      );
+
+      console.log(`%cTimestamp:`, consoleStyles.info, new Date().toISOString());
+
+      // Sanitize Headers
+      const sanitizedHeaders = redactData({ ...headers });
+      console.log(`%cHeaders:`, consoleStyles.info, sanitizedHeaders);
+
+      if (params) {
+        console.log(`%cQuery Params:`, consoleStyles.info, redactData(params));
+      }
+
+      if (data) {
+        console.log(`%cBody:`, consoleStyles.info, redactData(data));
+      }
+
+      console.groupEnd();
+    }
+
     return config;
   },
   (error: AxiosError) => {
-    console.error("[API Request Error]", error.message);
+    console.error(
+      "%c[Request Setup Error]",
+      consoleStyles.error,
+      error.message,
+    );
     return Promise.reject(error);
   },
 );
@@ -100,19 +192,63 @@ apiClient.interceptors.request.use(
 // ============================================================================
 
 apiClient.interceptors.response.use(
-  (response) => {
+  (response: AxiosResponse) => {
+    // 1. Calculate Duration
+    const startTime = response.config.metadata?.startTime || Date.now();
+    const duration = Date.now() - startTime;
+
+    // 2. Logging (Dev Only)
     if (import.meta.env.DEV) {
-      console.log(
-        `[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}`,
-        response.data,
+      const { status, config, data } = response;
+      const method = config.method?.toUpperCase();
+      const url = config.url;
+
+      console.groupCollapsed(
+        `%c✅ Success%c ${status} ${method} ${url} %c(${duration}ms)`,
+        consoleStyles.success,
+        "color: inherit; font-weight: normal;",
+        consoleStyles.info,
       );
+
+      console.log(`%cData:`, consoleStyles.info, data);
+      console.groupEnd();
     }
+
     return response;
   },
   (error: AxiosError<ApiErrorResponse>) => {
     const enhancedError = error as EnhancedApiError;
+    const config = error.config as InternalAxiosRequestConfig;
 
-    // Default values
+    // 1. Calculate Duration
+    const startTime = config?.metadata?.startTime || Date.now();
+    const duration = Date.now() - startTime;
+
+    // 2. Logging (Dev Only)
+    if (import.meta.env.DEV) {
+      const status = error.response?.status || "N/A";
+      const method = config?.method?.toUpperCase() || "UNKNOWN";
+      const url = config?.url || "UNKNOWN";
+
+      console.groupCollapsed(
+        `%c🚨 Error%c ${status} ${method} ${url} %c(${duration}ms)`,
+        consoleStyles.error,
+        "color: inherit; font-weight: normal;",
+        consoleStyles.info,
+      );
+
+      console.log(`%cMessage:`, consoleStyles.info, error.message);
+      if (error.response?.data) {
+        console.log(
+          `%cResponse Data:`,
+          consoleStyles.info,
+          error.response.data,
+        );
+      }
+      console.groupEnd();
+    }
+
+    // Default Error Values
     enhancedError.errorType = ApiErrorType.UNKNOWN;
     enhancedError.isRetryable = false;
     enhancedError.userMessage =
@@ -122,44 +258,30 @@ apiClient.interceptors.response.use(
     // NETWORK & CONNECTION ERRORS (No response received)
     // ========================================================================
     if (!error.response && error.request) {
-      // Request was made but no response received
       if (error.code === "ECONNABORTED" || error.message.includes("timeout")) {
-        // TIMEOUT ERROR
         enhancedError.errorType = ApiErrorType.TIMEOUT_ERROR;
         enhancedError.isRetryable = true;
         enhancedError.userMessage =
           "Connection timeout. The server took too long to respond. Please try again.";
-        console.error("[API Timeout Error] Request exceeded timeout limit");
       } else if (
         error.code === "ERR_NETWORK" ||
         error.code === "ERR_CONNECTION_REFUSED" ||
         error.message.includes("Network Error")
       ) {
-        // NETWORK/CONNECTION ERROR
         enhancedError.errorType = ApiErrorType.NETWORK_ERROR;
         enhancedError.isRetryable = true;
         enhancedError.userMessage =
           "Unable to connect to the server. Please check your internet connection and try again.";
-        console.error(
-          "[API Network Error] Connection refused or network unavailable",
-        );
       } else if (error.code === "ERR_NAME_NOT_RESOLVED") {
-        // DNS RESOLUTION ERROR
         enhancedError.errorType = ApiErrorType.NETWORK_ERROR;
         enhancedError.isRetryable = false;
         enhancedError.userMessage =
           "Could not reach the server. The server address may be incorrect.";
-        console.error("[API DNS Error] Could not resolve server address");
       } else {
-        // OTHER REQUEST ERROR
         enhancedError.errorType = ApiErrorType.NETWORK_ERROR;
         enhancedError.isRetryable = true;
         enhancedError.userMessage =
           "Network error occurred. Please check your connection and try again.";
-        console.error(
-          "[API Request Error] Request made but no response:",
-          error.message,
-        );
       }
     }
     // ========================================================================
@@ -169,39 +291,31 @@ apiClient.interceptors.response.use(
       const status = error.response.status;
       const data = error.response.data;
 
-      // Check if response is HTML instead of JSON (proxy/CDN errors)
       const contentType = error.response.headers["content-type"];
       if (contentType && contentType.includes("text/html")) {
         enhancedError.errorType = ApiErrorType.SERVER_ERROR;
         enhancedError.isRetryable = false;
         enhancedError.userMessage =
           "Server error. Please try again later or contact support.";
-        console.error("[API Response Error] Received HTML instead of JSON");
         return Promise.reject(enhancedError);
       }
 
-      // Extract error message from response
       const serverMessage =
         data?.error?.message || data?.detail || error.message;
 
       switch (status) {
         case 400:
-          // BAD REQUEST - Handle login validation errors specifically
           enhancedError.errorType = ApiErrorType.VALIDATION_ERROR;
           enhancedError.isRetryable = false;
           enhancedError.userMessage =
             data?.detail || "Invalid request. Please check your inputs.";
-          console.warn("[API Bad Request]", data?.detail);
           break;
         case 401:
-          // UNAUTHORIZED
           enhancedError.errorType = ApiErrorType.AUTH_ERROR;
           enhancedError.isRetryable = false;
           enhancedError.userMessage =
             "Invalid username or password. Please try again.";
-          console.error("[API Auth Error] Unauthorized access");
 
-          // Trigger auto-logout if not on login page
           const isLoginRequest = error.config?.url?.includes("/login");
           if (!isLoginRequest && authLogoutCallback) {
             setTimeout(() => {
@@ -213,28 +327,22 @@ apiClient.interceptors.response.use(
           break;
 
         case 403:
-          // FORBIDDEN
           enhancedError.errorType = ApiErrorType.FORBIDDEN;
           enhancedError.isRetryable = false;
           enhancedError.userMessage =
             "Access denied. Please contact your administrator if you believe this is an error.";
-          console.error("[API Permission Error] Forbidden resource");
           break;
 
         case 404:
-          // NOT FOUND
           enhancedError.errorType = ApiErrorType.NOT_FOUND;
           enhancedError.isRetryable = false;
           enhancedError.userMessage =
             "The requested resource was not found. Please try again or contact support.";
-          console.error("[API Not Found]", error.config?.url);
           break;
 
         case 422:
-          // VALIDATION ERROR
           enhancedError.errorType = ApiErrorType.VALIDATION_ERROR;
           enhancedError.isRetryable = false;
-          // Try to extract detailed validation errors
           if (Array.isArray(data?.detail)) {
             const validationErrors = data.detail
               .map((err: any) => err.msg || "")
@@ -246,11 +354,9 @@ apiClient.interceptors.response.use(
             enhancedError.userMessage =
               serverMessage || "Invalid input. Please check your data.";
           }
-          console.error("[API Validation Error]", data?.detail);
           break;
 
         case 429:
-          // RATE LIMIT
           enhancedError.errorType = ApiErrorType.RATE_LIMIT;
           enhancedError.isRetryable = true;
           const retryAfter = error.response.headers["retry-after"];
@@ -258,59 +364,31 @@ apiClient.interceptors.response.use(
             ? `${retryAfter} seconds`
             : "a few minutes";
           enhancedError.userMessage = `Too many requests. Please wait ${waitTime} and try again.`;
-          console.error("[API Rate Limit] Too many requests");
           break;
 
         case 503:
-          // SERVICE UNAVAILABLE
           enhancedError.errorType = ApiErrorType.SERVER_ERROR;
           enhancedError.isRetryable = true;
           enhancedError.userMessage =
             "Service temporarily unavailable. Please try again in a few minutes.";
-          console.error(
-            "[API Service Unavailable] Server is down or overloaded",
-          );
           break;
 
         case 500:
         case 502:
         case 504:
-          // SERVER ERRORS
           enhancedError.errorType = ApiErrorType.SERVER_ERROR;
           enhancedError.isRetryable = true;
           enhancedError.userMessage =
             "Server error. Please try again later. If the problem persists, contact support.";
-          console.error("[API Server Error]", status, serverMessage);
           break;
 
         default:
-          // OTHER HTTP ERRORS
           enhancedError.errorType = ApiErrorType.UNKNOWN;
           enhancedError.isRetryable = false;
           enhancedError.userMessage =
             serverMessage ||
             `Request failed with status ${status}. Please try again.`;
-          console.error("[API HTTP Error]", status, serverMessage);
       }
-    }
-    // ========================================================================
-    // REQUEST SETUP ERRORS (Error before request was sent)
-    // ========================================================================
-    else {
-      enhancedError.errorType = ApiErrorType.UNKNOWN;
-      enhancedError.isRetryable = false;
-      enhancedError.userMessage = "Request failed. Please try again.";
-      console.error("[API Setup Error]", error.message);
-    }
-
-    // Log enhanced error details in development
-    if (import.meta.env.DEV) {
-      console.error("[API Enhanced Error]", {
-        type: enhancedError.errorType,
-        message: enhancedError.userMessage,
-        isRetryable: enhancedError.isRetryable,
-        originalError: error,
-      });
     }
 
     return Promise.reject(enhancedError);
