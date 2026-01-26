@@ -3,9 +3,9 @@ import { Principle } from "../types";
 
 interface HeaderPanelProps {
   principle: Principle;
-  onUpdateDescription: (id: string, newDesc: string) => void; // Changed from number
-  onUpdateInclusion: (id: string, newCriteria: string) => void; // Changed from number
-  onUpdateExclusion: (id: string, newCriteria: string) => void; // Changed from number
+  onUpdateDescription: (id: string, newDesc: string) => void;
+  onUpdateInclusion: (id: string, newCriteria: string) => void;
+  onUpdateExclusion: (id: string, newCriteria: string) => void;
 }
 
 // Internal reusable component for editable fields
@@ -15,12 +15,14 @@ const EditableField = ({
   onSave,
   textClassName,
   labelColor = "text-slate-400",
+  containerClassName = "",
 }: {
   label?: string;
   value: string;
   onSave: (val: string) => void;
   textClassName?: string;
   labelColor?: string;
+  containerClassName?: string;
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [text, setText] = useState(value);
@@ -62,23 +64,26 @@ const EditableField = ({
     e.target.style.height = e.target.scrollHeight + "px";
   };
 
+  // Common styling for label
+  const labelElement = label && (
+    <h3
+      className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${labelColor} transition-opacity select-none`}
+    >
+      {label}
+    </h3>
+  );
+
   if (isEditing) {
     return (
-      <div className="mb-4">
-        {label && (
-          <h3
-            className={`text-xs font-bold uppercase tracking-wider mb-1 ${labelColor}`}
-          >
-            {label}
-          </h3>
-        )}
+      <div className={`mb-2 ${containerClassName}`}>
+        {labelElement}
         <textarea
           ref={textareaRef}
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
-          className={`w-full bg-white border-2 border-blue-400 rounded-lg p-2 focus:outline-none shadow-md resize-none ${textClassName}`}
+          className={`w-full bg-white border border-blue-400 rounded p-1.5 focus:outline-none shadow-sm resize-none ${textClassName}`}
           rows={1}
         />
       </div>
@@ -88,18 +93,12 @@ const EditableField = ({
   return (
     <div
       onClick={() => setIsEditing(true)}
-      className="mb-4 group cursor-pointer -ml-2 p-2 rounded-lg border border-transparent hover:bg-slate-50 hover:border-slate-200 transition-all duration-200"
+      className={`mb-2 group cursor-pointer -ml-2 p-1.5 rounded border border-transparent hover:bg-slate-50 hover:border-slate-200 transition-all duration-200 ${containerClassName}`}
     >
-      {label && (
-        <h3
-          className={`text-xs font-bold uppercase tracking-wider mb-1 ${labelColor} group-hover:opacity-100 transition-opacity`}
-        >
-          {label}
-        </h3>
-      )}
+      {labelElement}
       <p className={`whitespace-pre-wrap ${textClassName || "text-slate-600"}`}>
         {value || (
-          <span className="text-slate-300 italic">
+          <span className="text-slate-300 italic opacity-50 text-xs">
             Click to add {label?.toLowerCase()}...
           </span>
         )}
@@ -114,39 +113,83 @@ export const HeaderPanel: React.FC<HeaderPanelProps> = ({
   onUpdateInclusion,
   onUpdateExclusion,
 }) => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   return (
-    <div className="bg-white px-8 py-8 border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-      <div className="flex items-start justify-between mb-4">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+    <div className="bg-white px-4 py-3 border-b border-slate-200 sticky top-0 z-10 shadow-sm transition-all duration-300">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-bold text-slate-800 tracking-tight truncate flex-1">
           {principle.label_name}
         </h1>
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="ml-4 p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+          title={isCollapsed ? "Show Details" : "Hide Details"}
+        >
+          {isCollapsed ? (
+            // Chevron Down Icon (Simple SVG)
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          ) : (
+            // Chevron Up Icon
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m18 15-6-6-6 6" />
+            </svg>
+          )}
+        </button>
       </div>
 
-      <div className="space-y-2">
-        <EditableField
-          value={principle.definition}
-          onSave={(val) => onUpdateDescription(principle.id, val)}
-          textClassName="text-lg text-slate-700 leading-relaxed"
-        />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 pt-4 border-t border-slate-100">
+      {!isCollapsed && (
+        <div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
           <EditableField
-            label="Inclusion Criteria"
-            labelColor="text-green-600"
-            value={principle.inclusion_criteria}
-            onSave={(val) => onUpdateInclusion(principle.id, val)}
-            textClassName="text-sm text-slate-600"
+            value={principle.definition}
+            onSave={(val) => onUpdateDescription(principle.id, val)}
+            textClassName="text-sm text-slate-600 leading-normal"
+            containerClassName="mb-1"
           />
 
-          <EditableField
-            label="Exclusion Criteria"
-            labelColor="text-red-500"
-            value={principle.exclusion_criteria}
-            onSave={(val) => onUpdateExclusion(principle.id, val)}
-            textClassName="text-sm text-slate-600"
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-0 mt-2 pt-2 border-t border-slate-100">
+            <EditableField
+              label="Inclusion Criteria"
+              labelColor="text-green-600"
+              value={principle.inclusion_criteria}
+              onSave={(val) => onUpdateInclusion(principle.id, val)}
+              textClassName="text-xs text-slate-500 leading-tight"
+              containerClassName="mb-0"
+            />
+
+            <EditableField
+              label="Exclusion Criteria"
+              labelColor="text-red-500"
+              value={principle.exclusion_criteria}
+              onSave={(val) => onUpdateExclusion(principle.id, val)}
+              textClassName="text-xs text-slate-500 leading-tight"
+              containerClassName="mb-0"
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
