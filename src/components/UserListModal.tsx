@@ -10,7 +10,6 @@ export const UserListModal: React.FC<UserListModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  // We call the hook here so data is only fetched when the component is mounted (modal is open)
   const { data, isLoading, isError, error } = useNonSuperUsers();
 
   if (!isOpen) return null;
@@ -81,8 +80,9 @@ export const UserListModal: React.FC<UserListModalProps> = ({
                           <th scope="col" className="px-3 py-3.5 text-left text-xs font-semibold text-slate-900">
                             User ID
                           </th>
+                          {/* [REFINE] Updated header to match 'Revised Count' requirement explicitly */}
                           <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-900">
-                            Revised
+                            Revised Count
                           </th>
                           <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-900">
                             Status

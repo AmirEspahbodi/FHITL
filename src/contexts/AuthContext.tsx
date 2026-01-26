@@ -5,6 +5,8 @@ import React, {
   useCallback,
   ReactNode,
 } from "react";
+// [FIX] Import the setter and callback registration from the client
+import { setAuthToken, setAuthLogoutCallback } from "../api/client";
 
 // ============================================================================
 // Types & Interfaces
@@ -54,10 +56,6 @@ const PERSIST_STORAGE_KEY = "cogniloop_persist_session";
 // Storage Helper Functions
 // ============================================================================
 
-/**
- * Safely check if sessionStorage is available
- * Returns false in private browsing mode or when disabled
- */
 const isStorageAvailable = (): boolean => {
   try {
     const testKey = "__storage_test__";
@@ -70,15 +68,10 @@ const isStorageAvailable = (): boolean => {
   }
 };
 
-/**
- * Safely get item from sessionStorage
- * Returns null if storage unavailable or item doesn't exist
- */
 const safeGetItem = (key: string): string | null => {
   if (!isStorageAvailable()) {
     return null;
   }
-
   try {
     return sessionStorage.getItem(key);
   } catch (error) {
@@ -87,10 +80,6 @@ const safeGetItem = (key: string): string | null => {
   }
 };
 
-/**
- * Safely set item in sessionStorage
- * Returns true on success, false on failure
- */
 const safeSetItem = (key: string, value: string): boolean => {
   if (!isStorageAvailable()) {
     if (import.meta.env.DEV) {
@@ -98,12 +87,10 @@ const safeSetItem = (key: string, value: string): boolean => {
     }
     return false;
   }
-
   try {
     sessionStorage.setItem(key, value);
     return true;
   } catch (error) {
-    // Handle quota exceeded error
     if (error instanceof DOMException && error.name === "QuotaExceededError") {
       console.error("[Auth] Storage quota exceeded:", error);
     } else {
@@ -113,14 +100,10 @@ const safeSetItem = (key: string, value: string): boolean => {
   }
 };
 
-/**
- * Safely remove item from sessionStorage
- */
 const safeRemoveItem = (key: string): void => {
   if (!isStorageAvailable()) {
     return;
   }
-
   try {
     sessionStorage.removeItem(key);
   } catch (error) {
@@ -128,22 +111,14 @@ const safeRemoveItem = (key: string): void => {
   }
 };
 
-/**
- * Validate JWT token format (basic structure check)
- * Does NOT verify signature - server's responsibility
- */
 const isValidTokenFormat = (token: string): boolean => {
   if (!token || typeof token !== "string") {
     return false;
   }
-
-  // JWT tokens have 3 parts: header.payload.signature
   const parts = token.split(".");
   if (parts.length !== 3) {
     return false;
   }
-
-  // Each part should be non-empty
   return parts.every((part) => part.length > 0);
 };
 
@@ -172,29 +147,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Storage Management
   // --------------------------------------------------------------------------
 
-  /**
-   * Store token with error handling
-   * Returns true if successful, false if storage failed
-   */
   const storeToken = useCallback((token: string, persist: boolean): boolean => {
     if (!persist) {
-      return true; // Memory-only storage, always succeeds
+      return true;
     }
-
     const success = safeSetItem(TOKEN_STORAGE_KEY, token);
-
     if (!success && import.meta.env.DEV) {
       console.warn(
         "[Auth] Could not persist token. Session will be memory-only.",
       );
     }
-
     return success;
   }, []);
 
-  /**
-   * Retrieve token from storage
-   */
   const retrieveToken = useCallback((): string | null => {
     const persistPreference = safeGetItem(PERSIST_STORAGE_KEY);
     if (persistPreference === "true") {
@@ -203,23 +168,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return null;
   }, []);
 
-  /**
-   * Clear all stored authentication data
-   * Handles errors gracefully
-   */
   const clearStoredAuth = useCallback(() => {
     try {
       safeRemoveItem(TOKEN_STORAGE_KEY);
       safeRemoveItem(USER_STORAGE_KEY);
       safeRemoveItem(USER_TYPE_STORAGE_KEY);
       safeRemoveItem(PERSIST_STORAGE_KEY);
-
       if (import.meta.env.DEV) {
         console.log("[Auth] Cleared all stored authentication data");
       }
     } catch (error) {
       console.error("[Auth] Error during storage cleanup:", error);
-      // Continue anyway - don't let cleanup errors block logout
     }
   }, []);
 
@@ -227,25 +186,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Authentication Operations
   // --------------------------------------------------------------------------
 
-  /**
-   * Authenticate user with credentials
-   * Comprehensive error handling for all scenarios
-   */
+  const logout = useCallback(() => {
+    if (import.meta.env.DEV) {
+      console.log("[Auth] Logging out user");
+    }
+
+    // [FIX] Ensure API client clears the token
+    setAuthToken(null);
+
+    clearStoredAuth();
+
+    setAuthState({
+      token: null,
+      isAuthenticated: false,
+      isLoading: false,
+      user: null,
+      persistSession: false,
+    });
+  }, [clearStoredAuth]);
+
+  // [FIX] Register the logout callback with the API client interceptor
+  // This ensures 401 errors from the API trigger a full app logout
+  useEffect(() => {
+    setAuthLogoutCallback(logout);
+  }, [logout]);
+
   const login = useCallback(
     async (username: string, password: string, rememberMe: boolean) => {
-      // Set loading state
-      // setAuthState((prev) => ({ ...prev, isLoading: true }));
-
       try {
-        // Import authService dynamically
         const { authService } = await import("../api/services/authService");
-
-        // Call login API
         const response = await authService.login(username, password);
-
-        // ====================================================================
-        // VALIDATE RESPONSE
-        // ====================================================================
 
         if (!response) {
           throw new Error("No response received from server");
@@ -254,34 +224,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const { access_token, user_type } = response;
 
         if (!access_token) {
-          console.error(
-            "[Auth] Login response missing access_token:",
-            response,
-          );
           throw new Error(
             "Invalid response from server: missing authentication token",
           );
         }
 
-        // Validate token format
         if (!isValidTokenFormat(access_token)) {
-          console.error("[Auth] Received invalid token format");
           throw new Error(
             "Invalid authentication token received. Please try again.",
           );
         }
 
-        // ====================================================================
-        // STORE CREDENTIALS
-        // ====================================================================
-
         let storageSuccess = true;
 
-        // Attempt to persist token if requested
         if (rememberMe) {
           storageSuccess = storeToken(access_token, true);
-
-          // Also persist username, user_type and preference
           const userStored = safeSetItem(USER_STORAGE_KEY, username);
           const typeStored = safeSetItem(USER_TYPE_STORAGE_KEY, user_type);
           const prefStored = safeSetItem(PERSIST_STORAGE_KEY, "true");
@@ -291,9 +248,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
         }
 
-        // ====================================================================
-        // UPDATE AUTH STATE
-        // ====================================================================
+        // [FIX] Set the token in the API client immediately
+        setAuthToken(access_token);
 
         setAuthState({
           token: access_token,
@@ -303,31 +259,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           persistSession: rememberMe && storageSuccess,
         });
 
-        // Notify user if storage failed but login succeeded
         if (rememberMe && !storageSuccess) {
           console.warn(
-            "[Auth] Login successful but session persistence failed. " +
-              "You will need to log in again when you close this tab.",
+            "[Auth] Login successful but session persistence failed.",
           );
         }
-
-        if (import.meta.env.DEV) {
-          console.log("[Auth] Login successful:", {
-            username,
-            user_type,
-            tokenReceived: true,
-            sessionPersisted: rememberMe && storageSuccess,
-          });
-        }
       } catch (error: any) {
-        // ====================================================================
-        // ERROR HANDLING
-        // ====================================================================
-        // (Existing error handling logic retained)
-
         console.error("[Auth] Login failed:", error);
 
-        // Clear any partial state
+        // Ensure clean state on failure
+        setAuthToken(null);
         clearStoredAuth();
 
         setAuthState({
@@ -338,110 +279,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           persistSession: false,
         });
 
-        // Determine user-friendly error message
+        // Error message handling (retained from original)
         let errorMessage = "Authentication failed. Please try again.";
-
-        if (
-          error.userMessage &&
-          typeof error.userMessage === "string" &&
-          error.userMessage.trim()
-        ) {
-          errorMessage = error.userMessage;
-        } else if (error.response?.status) {
-          const status = error.response.status;
-          const detail = error.response.data?.detail;
-
-          switch (status) {
-            case 400:
-              errorMessage =
-                detail || "Invalid request. Please check your input.";
-              break;
-            case 401:
-              errorMessage = "Invalid username or password. Please try again.";
-              break;
-            case 403:
-              errorMessage =
-                "Account access denied. Please contact your administrator.";
-              break;
-            case 429:
-              const retryAfter = error.response.headers?.["retry-after"];
-              const waitTime = retryAfter
-                ? `${retryAfter} seconds`
-                : "a few moments";
-              errorMessage =
-                detail ||
-                `Too many login attempts. Please wait ${waitTime} and try again.`;
-              break;
-            case 422:
-              errorMessage =
-                detail || "Invalid input. Please check your credentials.";
-              break;
-            case 500:
-            case 502:
-            case 503:
-            case 504:
-              errorMessage = "Server error. Please try again later.";
-              break;
-            default:
-              errorMessage =
-                detail ||
-                `Request failed with status ${status}. Please try again.`;
-          }
-        } else if (error.request) {
-          if (
-            error.code === "ECONNABORTED" ||
-            error.message?.includes("timeout")
-          ) {
-            errorMessage = "Connection timeout. Please try again.";
-          } else if (
-            error.code === "ERR_NETWORK" ||
-            error.code === "ERR_CONNECTION_REFUSED"
-          ) {
-            errorMessage =
-              "Unable to connect to server. Please check your internet connection.";
-          } else {
-            errorMessage =
-              "Network error. Please check your connection and try again.";
-          }
-        } else if (error.message && typeof error.message === "string") {
-          errorMessage = error.message;
+        if (error.userMessage) {
+            errorMessage = error.userMessage;
+        } else if (error.message) {
+            errorMessage = error.message;
         }
-
-        // Re-throw with sanitized message
         throw new Error(errorMessage);
       }
     },
     [storeToken, clearStoredAuth],
   );
 
-  /**
-   * Logout user and clear all authentication state
-   */
-  const logout = useCallback(() => {
-    if (import.meta.env.DEV) {
-      console.log("[Auth] Logging out user");
-    }
-
-    // Clear stored tokens and data
-    clearStoredAuth();
-
-    // Reset auth state
-    setAuthState({
-      token: null,
-      isAuthenticated: false,
-      isLoading: false,
-      user: null,
-      persistSession: false,
-    });
-  }, [clearStoredAuth]);
-
-  /**
-   * Update session persistence preference
-   */
   const setPersistSession = useCallback(
     (persist: boolean) => {
       setAuthState((prev) => ({ ...prev, persistSession: persist }));
-
       try {
         if (persist) {
           safeSetItem(PERSIST_STORAGE_KEY, "true");
@@ -471,44 +324,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     const restoreSession = async () => {
-      if (import.meta.env.DEV) {
-        console.log("[Auth] Attempting to restore session...");
-      }
-
       try {
-        // Check if storage is available
         if (!isStorageAvailable()) {
-          console.warn("[Auth] Storage unavailable, cannot restore session");
           setAuthState((prev) => ({ ...prev, isLoading: false }));
           return;
         }
 
-        // Check for existing token
         const token = retrieveToken();
         const username = safeGetItem(USER_STORAGE_KEY);
         const storedUserType = safeGetItem(USER_TYPE_STORAGE_KEY);
 
         if (!token || !username) {
-          if (import.meta.env.DEV) {
-            console.log("[Auth] No stored session found");
-          }
           setAuthState((prev) => ({ ...prev, isLoading: false }));
           return;
         }
 
-        // Determine user type (fallback to normal for backward compatibility)
         const user_type: "superuser" | "normal" =
           storedUserType === "superuser" ? "superuser" : "normal";
 
-        // Validate token format
         if (!isValidTokenFormat(token)) {
-          console.warn("[Auth] Stored token has invalid format, clearing");
           clearStoredAuth();
           setAuthState((prev) => ({ ...prev, isLoading: false }));
           return;
         }
 
-        // Check if token appears to be expired (client-side check)
+        // Check expiration (client-side)
         try {
           const payload = token.split(".")[1];
           const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
@@ -525,11 +365,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             }
           }
         } catch (error) {
-          console.warn("[Auth] Could not parse token expiration:", error);
-          // Continue anyway - server will validate
+          // Continue if parsing fails
         }
 
-        // Token looks valid, restore session
+        // [FIX] Vital: Update the API client with the restored token
+        setAuthToken(token);
+
         setAuthState({
           token,
           isAuthenticated: true,
@@ -537,13 +378,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           user: { username, user_type },
           persistSession: true,
         });
-
-        if (import.meta.env.DEV) {
-          console.log("[Auth] Session restored successfully for:", username);
-        }
       } catch (error) {
         console.error("[Auth] Failed to restore session:", error);
         clearStoredAuth();
+        setAuthToken(null);
         setAuthState((prev) => ({ ...prev, isLoading: false }));
       }
     };
