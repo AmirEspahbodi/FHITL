@@ -5,7 +5,7 @@ import { HeaderPanel } from "./components/HeaderPanel";
 import { DataRowItem } from "./components/DataRowItem";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import { AdminDashboard } from "./components/AdminDashboard";
+import { UserListModal } from "./components/UserListModal";
 import { useColumnResizer, ColumnConfig } from "./hooks/useColumnResizer";
 import { useSidebarResizer } from "./hooks/useSidebarResizer";
 import { useAuth } from "./hooks/useAuth";
@@ -51,22 +51,37 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   },
   { id: "evidence", label: "LLM Evidence", width: 300, minWidth: 100 },
   { id: "expert", label: "Expert Opinion", width: 150, minWidth: 100 },
-  { id: "score", label: "Score", width: 80, minWidth: 60 },
+  { id: "score", label: "Score", width: 80, minWidth: 60 } /* A Score */,
 ];
 
 // ============================================================================
-// User Dashboard Component (Formerly App)
+// Main App Component (Protected)
 // ============================================================================
 
-const UserDashboard: React.FC = () => {
-  const { logout, user } = useAuth();
+const App: React.FC = () => {
+  // --------------------------------------------------------------------------
+  // Authentication Integration
+  // --------------------------------------------------------------------------
+
+  const { token, logout, user } = useAuth();
+
+  useEffect(() => {
+    setAuthToken(token);
+  }, [token]);
+
+  useEffect(() => {
+    setAuthLogoutCallback(logout);
+    return () => setAuthLogoutCallback(() => {});
+  }, [logout]);
 
   // --------------------------------------------------------------------------
   // UI State (Local)
   // --------------------------------------------------------------------------
 
+  // Changed initial state to empty string
   const [selectedPrincipleId, setSelectedPrincipleId] = useState<string>("");
   const [showRevised, setShowRevised] = useState<boolean>(true);
+  const [isUsersModalOpen, setIsUsersModalOpen] = useState<boolean>(false);
 
   const currentUserName = user?.username || "Unknown User";
 
@@ -134,10 +149,11 @@ const UserDashboard: React.FC = () => {
   };
 
   // --------------------------------------------------------------------------
-  // Event Handlers
+  // Event Handlers (Now using mutations)
   // --------------------------------------------------------------------------
 
   const handleRenamePrinciple = (id: string, newName: string) => {
+    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { label_name: newName },
@@ -145,6 +161,7 @@ const UserDashboard: React.FC = () => {
   };
 
   const handleUpdateDescription = (id: string, newDesc: string) => {
+    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { definition: newDesc },
@@ -152,6 +169,7 @@ const UserDashboard: React.FC = () => {
   };
 
   const handleUpdateInclusion = (id: string, newCriteria: string) => {
+    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { inclusion_criteria: newCriteria },
@@ -159,6 +177,7 @@ const UserDashboard: React.FC = () => {
   };
 
   const handleUpdateExclusion = (id: string, newCriteria: string) => {
+    // Changed type
     updatePrinciple.mutate({
       id,
       updates: { exclusion_criteria: newCriteria },
@@ -185,6 +204,7 @@ const UserDashboard: React.FC = () => {
   };
 
   const handleDropRow = (rowId: string, targetPrincipleId: string) => {
+    // Changed type
     if (targetPrincipleId === selectedPrincipleId) return;
 
     reassignSample.mutate({
@@ -195,7 +215,7 @@ const UserDashboard: React.FC = () => {
   };
 
   // --------------------------------------------------------------------------
-  // Loading & Error States
+  // Loading State
   // --------------------------------------------------------------------------
 
   if (principlesLoading) {
@@ -210,6 +230,10 @@ const UserDashboard: React.FC = () => {
       </div>
     );
   }
+
+  // --------------------------------------------------------------------------
+  // Error State
+  // --------------------------------------------------------------------------
 
   if (principlesError) {
     return (
@@ -251,11 +275,16 @@ const UserDashboard: React.FC = () => {
   }
 
   // --------------------------------------------------------------------------
-  // Render User Dashboard
+  // Main Render
   // --------------------------------------------------------------------------
 
   return (
     <div className="flex h-screen w-screen bg-slate-50 overflow-hidden text-slate-800 font-sans">
+      <UserListModal
+        isOpen={isUsersModalOpen}
+        onClose={() => setIsUsersModalOpen(false)}
+      />
+
       <Sidebar
         principles={principles}
         selectedId={selectedPrincipleId}
@@ -354,7 +383,23 @@ const UserDashboard: React.FC = () => {
                   </>
                 )}
               </button>
+
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsUsersModalOpen(true)}
+                  className="mr-2 px-3 py-1.5 bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 hover:text-slate-800 rounded-md text-xs font-medium shadow-sm transition-all flex items-center gap-2"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="w-4 h-4 text-slate-400"
+                  >
+                    <path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.465 14.493a1.23 1.23 0 0 0 .41 1.412A9.957 9.957 0 0 0 10 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 0 0-13.074.003Z" />
+                  </svg>
+                  Users
+                </button>
+
                 <span className="text-xs text-slate-500">Logged in as:</span>
                 <span className="text-xs font-medium text-slate-700">
                   {currentUserName}
@@ -441,31 +486,6 @@ const UserDashboard: React.FC = () => {
       </main>
     </div>
   );
-};
-
-// ============================================================================
-// Main App Component (Routing)
-// ============================================================================
-
-const App: React.FC = () => {
-  const { token, logout, user } = useAuth();
-
-  // Set global auth token
-  useEffect(() => {
-    setAuthToken(token);
-  }, [token]);
-
-  // Set global logout callback
-  useEffect(() => {
-    setAuthLogoutCallback(logout);
-    return () => setAuthLogoutCallback(() => {});
-  }, [logout]);
-
-  if (user?.user_type === "superuser") {
-    return <AdminDashboard />;
-  }
-
-  return <UserDashboard />;
 };
 
 const AppWrapper: React.FC = () => {

@@ -8,6 +8,7 @@ export interface LoginRequest {
 export interface LoginResponse {
   access_token: string;
   token_type: string;
+  user_type: "superuser" | "normal";
 }
 
 export interface ValidationError {
@@ -75,7 +76,7 @@ export interface ApiErrorResponse {
 }
 
 // ============================================================================
-// User Management
+// User Management Types
 // ============================================================================
 
 export interface User {
@@ -84,4 +85,10 @@ export interface User {
   full_name: string;
   is_active: boolean;
   is_superuser: boolean;
+  revised_count: number;
+}
+
+export interface UsersResponse {
+  users: User[];
+  total_comments: number;
 }
