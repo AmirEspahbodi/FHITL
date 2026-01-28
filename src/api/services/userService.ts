@@ -1,5 +1,5 @@
 import { apiClient } from "../client";
-import { UsersResponse } from "../types";
+import { UsersResponse, CreateUserRequest, User } from "../types";
 
 export const userService = {
   getNonSuperUsers: async (
@@ -25,6 +25,11 @@ export const userService = {
         Accept: "application/json",
       },
     });
+    return data;
+  },
+
+  createUser: async (user: CreateUserRequest): Promise<User> => {
+    const { data } = await apiClient.post<User>("/users/", user);
     return data;
   },
 };

@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { UserDirectory } from "./UserListModal";
+import { CreateUserModal } from "./CreateUserModal";
 
 export const AdminDashboard: React.FC = () => {
   const { logout, user } = useAuth();
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
@@ -36,6 +38,25 @@ export const AdminDashboard: React.FC = () => {
 
             {/* User Profile & Actions */}
             <div className="flex items-center gap-6">
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-500 transition-colors shadow-sm active:scale-95"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M12 3.75a.75.75 0 0 1 .75.75v6.75h6.75a.75.75 0 0 1 0 1.5h-6.75v6.75a.75.75 0 0 1-1.5 0v-6.75H4.5a.75.75 0 0 1 0-1.5h6.75V4.5a.75.75 0 0 1 .75-.75Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Create User
+              </button>
+
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium text-slate-900">
                   {user?.username}
@@ -81,6 +102,11 @@ export const AdminDashboard: React.FC = () => {
           <UserDirectory />
         </div>
       </main>
+
+      <CreateUserModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+      />
     </div>
   );
 };

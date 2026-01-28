@@ -21,6 +21,14 @@ export interface AuthError {
   detail: string | ValidationError[];
 }
 
+export interface CreateUserRequest {
+  email: string;
+  password: string;
+  full_name: string;
+  is_active: boolean;
+  is_superuser: boolean;
+}
+
 // ============================================================================
 // API Response Wrappers
 // ============================================================================
